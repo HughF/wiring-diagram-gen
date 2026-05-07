@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Hugh Frater
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Generate an interactive SVG wiring harness diagram from a CSV file.
 
 Usage:
