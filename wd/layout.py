@@ -1,7 +1,13 @@
 from __future__ import annotations
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from .parser import Wire, ConnectorSpec
+
+
+def _pin_key(pin: str) -> list:
+    return [int(c) if c.isdigit() else c.lower()
+            for c in re.split(r'(\d+)', str(pin))]
 
 # ── Layout constants ──────────────────────────────────────────────────────────
 SVG_HEADER_H  = 68   # height of the top title bar
@@ -91,13 +97,13 @@ def compute_layout(
 
     # Left: sort rows ascending by left_pin within each connector
     for ws in left_wires.values():
-        ws.sort(key=lambda w: w.left_pin)
+        ws.sort(key=lambda w: _pin_key(w.left_pin))
 
     # Right: order connectors top-to-bottom by the min left_pin that feeds them,
     # so that short wires stay near the top and crossings are minimised.
-    def _right_key(c: ConnectorSpec) -> int:
+    def _right_key(c: ConnectorSpec) -> list:
         ws = right_wires.get(c.name, [])
-        return min((w.left_pin for w in ws), default=9999)
+        return min((_pin_key(w.left_pin) for w in ws), default=["~"])
 
     right_specs_ordered = sorted(right_specs, key=_right_key)
 
@@ -105,7 +111,7 @@ def compute_layout(
     # aligns top-of-right with top-of-left and eliminates crossing for any
     # single connector pair.
     for c in right_specs_ordered:
-        right_wires[c.name].sort(key=lambda w: w.left_pin)
+        right_wires[c.name].sort(key=lambda w: _pin_key(w.left_pin))
 
     # ── Left connector layouts ────────────────────────────────────────────────
     left_layouts: list[ConnectorLayout] = []

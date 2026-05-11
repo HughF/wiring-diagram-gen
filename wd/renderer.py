@@ -1,11 +1,17 @@
 from __future__ import annotations
 import json
+import re
 from .layout import (
     DiagramLayout, ConnectorLayout, WireLayout,
     CONN_HEADER_H, ROW_H, BOT_PAD, WARN_BOX_PAD, WARN_BOX_H,
     WIRE_LEFT_X, WIRE_RIGHT_X,
 )
 from .colours import resolve, is_light, colour_name
+
+def _pin_key(pin: str) -> list:
+    return [int(c) if c.isdigit() else c.lower()
+            for c in re.split(r'(\d+)', str(pin))]
+
 
 # Bezier control-point x positions, tuned to match the reference diagram style.
 _SPAN    = WIRE_RIGHT_X - WIRE_LEFT_X
@@ -378,7 +384,7 @@ def _cut_list_html(layout: DiagramLayout) -> str:
 
     # Sort by left connector diagram order, then pin
     conn_order = {cl.spec.name: i for i, cl in enumerate(layout.left_connectors)}
-    sorted_wires = sorted(wires, key=lambda w: (conn_order.get(w.left_conn, 999), w.left_pin))
+    sorted_wires = sorted(wires, key=lambda w: (conn_order.get(w.left_conn, 999), _pin_key(w.left_pin)))
 
     rows: list[str] = []
     for w in sorted_wires:

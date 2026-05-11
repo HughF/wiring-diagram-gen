@@ -40,9 +40,9 @@ class Wire:
     wid: str
     signal: str
     left_conn: str
-    left_pin: int
+    left_pin: str
     right_conn: str
-    right_pin: int | None   # None = free-end / termination group
+    right_pin: str | None   # None = free-end / termination group
     colour: str             # raw name as written in CSV
     warning: str | None
     pair: str               # pair group name; empty string = unpaired
@@ -110,17 +110,11 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
 
             if not left_conn or not left_pin_s:
                 continue
-            try:
-                left_pin = int(left_pin_s)
-            except ValueError:
-                continue
+            left_pin = left_pin_s
 
-            right_pin: int | None = None
+            right_pin: str | None = None
             if right_pin_s and right_pin_s.upper() not in ("N/C", "NC", ""):
-                try:
-                    right_pin = int(right_pin_s)
-                except ValueError:
-                    pass
+                right_pin = right_pin_s
 
             wid = f"w{len(wires) + 1}"
             wires.append(Wire(
