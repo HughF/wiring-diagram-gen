@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import math
 import re
 from .layout import (
     DiagramLayout, ConnectorLayout, WireLayout,
@@ -17,8 +18,9 @@ def _pin_key(pin: str) -> list:
 _SPAN    = WIRE_RIGHT_X - WIRE_LEFT_X
 _CP1_X   = round(WIRE_LEFT_X  + _SPAN * 0.38)   # departs horizontally from left
 _CP2_X   = round(WIRE_RIGHT_X - _SPAN * 0.15)   # arrives horizontally at right
-_TWIST_X = round(WIRE_LEFT_X/8 + 3*_CP1_X/8 + 3*_CP2_X/8 + WIRE_RIGHT_X/8)  # Bézier t=0.5 x
-_SYM_W   = 38   # helix symbol width in px (3×10-step + 2×4-pad)
+_TWIST_T0 = 0.30   # Bézier parameter where the twist zone begins
+_TWIST_T1 = 0.70   # Bézier parameter where the twist zone ends (one full twist → N must be int)
+_N_SAMP   = 60     # polyline sample count for twisted wire paths
 
 # ── Colour themes ─────────────────────────────────────────────────────────────
 _LEFT_THEME = {
@@ -54,58 +56,122 @@ def _bez(yl: int, yr: int) -> str:
     return f"M{WIRE_LEFT_X},{yl} C{_CP1_X},{yl} {_CP2_X},{yr} {WIRE_RIGHT_X},{yr}"
 
 
-def _twist_sym_svg(ys: list[int], pair_name: str, x_offset: int = 0) -> list[str]:
-    """Helix symbol for one twisted-pair group at the given wire y-positions."""
-    if len(ys) < 2:
-        return []
-    top, bot = min(ys), max(ys)
-    if bot - top < 4:
-        return []
+def _bezier_pt(t: float, y_left: float, y_right: float) -> tuple[float, float]:
+    """Evaluate the wire cubic Bézier at parameter t, returning (x, y)."""
+    x = ((1-t)**3*WIRE_LEFT_X + 3*(1-t)**2*t*_CP1_X
+         + 3*(1-t)*t**2*_CP2_X + t**3*WIRE_RIGHT_X)
+    y = y_left*(1-t)**2*(1+2*t) + y_right*t**2*(3-2*t)
+    return x, y
 
-    MAX_H = 2 * ROW_H   # 56 px cap — beyond this, add connector lines
-    s     = 10           # horizontal step; 3 segments → 30 px wide
-    cx    = _TWIST_X + x_offset
-    x0    = cx - (3 * s) // 2
-    pad   = 4
+
+def _twisted_paths(
+    wl1: WireLayout, wl2: WireLayout,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """Sample both wires of a twisted pair, applying one full sinusoidal twist in the zone."""
+    pts1: list[tuple[float, float]] = []
+    pts2: list[tuple[float, float]] = []
+    for i in range(_N_SAMP + 1):
+        t = i / _N_SAMP
+        x, y1 = _bezier_pt(t, wl1.y_left, wl1.y_right)
+        _,  y2 = _bezier_pt(t, wl2.y_left, wl2.y_right)
+        if _TWIST_T0 <= t <= _TWIST_T1:
+            s   = (t - _TWIST_T0) / (_TWIST_T1 - _TWIST_T0)  # 0→1 through zone
+            yc  = (y1 + y2) / 2
+            amp = (y2 - y1) / 2
+            # One full twist: cos starts and ends at 1 so endpoints rejoin naturally
+            twist = amp * math.cos(2 * math.pi * s)
+            y1, y2 = yc - twist, yc + twist
+        pts1.append((x, y1))
+        pts2.append((x, y2))
+    return pts1, pts2
+
+
+def _pts_path(pts: list[tuple[float, float]]) -> str:
+    cmd = [f"M{pts[0][0]:.1f},{pts[0][1]:.1f}"]
+    for x, y in pts[1:]:
+        cmd.append(f"L{x:.1f},{y:.1f}")
+    return " ".join(cmd)
+
+
+def _twisted_pair_svg(wl1: WireLayout, wl2: WireLayout) -> list[str]:
+    """Draw a 2-wire twisted pair with actual crossing effect instead of an overlay symbol."""
+    w1, w2   = wl1.wire, wl2.wire
+    col1, col2 = resolve(w1.colour), resolve(w2.colour)
+
+    pts1, pts2 = _twisted_paths(wl1, wl2)
+    d1, d2 = _pts_path(pts1), _pts_path(pts2)
 
     out: list[str] = []
 
-    if bot - top <= MAX_H:
-        h_top, h_bot = top, bot
+    # Halos for light-coloured wires (drawn first so they sit below the wire)
+    if is_light(col1):
+        out.append(f'<path id="wireBG_{w1.wid}" d="{d1}" stroke="#90A4AE"'
+                   f' stroke-width="3.4" fill="none" opacity="0.9" pointer-events="none"/>')
+    if is_light(col2):
+        out.append(f'<path id="wireBG_{w2.wid}" d="{d2}" stroke="#90A4AE"'
+                   f' stroke-width="3.4" fill="none" opacity="0.9" pointer-events="none"/>')
+
+    out.append(f'<path id="wire_{w1.wid}" d="{d1}" stroke="{col1}"'
+               f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>')
+    out.append(f'<path id="wire_{w2.wid}" d="{d2}" stroke="{col2}"'
+               f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>')
+
+    # Crossing indices — for _N_SAMP=60, both cross points land exactly on a sample
+    c1 = round(_N_SAMP * (_TWIST_T0 + 0.25 * (_TWIST_T1 - _TWIST_T0)))
+    c2 = round(_N_SAMP * (_TWIST_T0 + 0.75 * (_TWIST_T1 - _TWIST_T0)))
+
+    # Which wire is naturally above (smaller y) at the zone entrance?
+    _, y1_z = _bezier_pt(_TWIST_T0, wl1.y_left, wl1.y_right)
+    _, y2_z = _bezier_pt(_TWIST_T0, wl2.y_left, wl2.y_right)
+    # The naturally-above wire goes OVER at crossing 1, the other goes OVER at crossing 2.
+    # Each tuple: (crossing_idx, under_pts, over_pts, over_col, over_wid)
+    if y1_z <= y2_z:
+        crossings = [(c1, pts2, pts1, col1, w1.wid), (c2, pts1, pts2, col2, w2.wid)]
     else:
-        mid   = (top + bot) // 2
-        h_top = mid - MAX_H // 2
-        h_bot = mid + MAX_H // 2
-        # Dashed lines from helix tips to the outermost wire positions
+        crossings = [(c1, pts1, pts2, col2, w2.wid), (c2, pts2, pts1, col1, w1.wid)]
+
+    GAP_R, GAP_W, N_OVER = 5, 5, 3
+    BG = "#F0F2F5"   # matches the SVG background rect
+
+    for c_idx, under_pts, over_pts, over_col, over_wid in crossings:
+        x_c, y_c = pts1[c_idx]   # at crossing, both paths share (x, y_center)
+
+        # Perpendicular direction to the under wire at the crossing
+        if 0 < c_idx < len(under_pts) - 1:
+            dx = under_pts[c_idx+1][0] - under_pts[c_idx-1][0]
+            dy = under_pts[c_idx+1][1] - under_pts[c_idx-1][1]
+            L  = math.hypot(dx, dy)
+            px, py = (-dy/L, dx/L) if L > 0 else (0.0, 1.0)
+        else:
+            px, py = 0.0, 1.0
+
+        # White gap masks the under wire at the crossing
+        out.append(
+            f'<line x1="{x_c+px*GAP_R:.1f}" y1="{y_c+py*GAP_R:.1f}"'
+            f' x2="{x_c-px*GAP_R:.1f}" y2="{y_c-py*GAP_R:.1f}"'
+            f' stroke="{BG}" stroke-width="{GAP_W}" stroke-linecap="round"'
+            f' pointer-events="none"/>'
+        )
+
+        # Redraw the over wire through the crossing so it appears on top.
+        # ID is required so the JS fade/highlight machinery can control this element.
+        seg = over_pts[max(0, c_idx-N_OVER): c_idx+N_OVER+1]
+        if len(seg) > 1:
+            out.append(
+                f'<path id="wireOD_{over_wid}" d="{_pts_path(seg)}" stroke="{over_col}"'
+                f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>'
+            )
+
+    # Endpoint dots
+    for wl, col in [(wl1, col1), (wl2, col2)]:
+        w = wl.wire
         out += [
-            f'<line x1="{cx}" y1="{top}" x2="{cx}" y2="{h_top}"'
-            f' stroke="#455A64" stroke-width="1.2" stroke-dasharray="3,2" pointer-events="none"/>',
-            f'<line x1="{cx}" y1="{h_bot}" x2="{cx}" y2="{bot}"'
-            f' stroke="#455A64" stroke-width="1.2" stroke-dasharray="3,2" pointer-events="none"/>',
+            f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
+            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
+            f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="4.5"'
+            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
         ]
 
-    # White backing so the helix reads cleanly over any wire colour
-    out.append(
-        f'<rect x="{x0-pad}" y="{h_top-pad}" width="{3*s+2*pad}" height="{h_bot-h_top+2*pad}"'
-        f' rx="3" fill="white" fill-opacity="0.82" pointer-events="none"/>'
-    )
-
-    d = (
-        f"M{x0},{h_top} "
-        f"C{x0+s},{h_top} {x0},{h_bot} {x0+s},{h_bot} "
-        f"C{x0+2*s},{h_bot} {x0+s},{h_top} {x0+2*s},{h_top} "
-        f"C{x0+3*s},{h_top} {x0+2*s},{h_bot} {x0+3*s},{h_bot}"
-    )
-    out.append(
-        f'<path d="{d}" stroke="#455A64" stroke-width="1.5" fill="none" pointer-events="none"/>'
-    )
-
-    # Pair-name label — white stroke halo keeps it legible over any background
-    out.append(
-        f'<text x="{cx}" y="{h_top-5}" text-anchor="middle" font-size="9" font-weight="bold"'
-        f' fill="#37474F" stroke="white" stroke-width="3" paint-order="stroke"'
-        f' pointer-events="none">{_x(pair_name)}</text>'
-    )
     return out
 
 
@@ -278,7 +344,7 @@ const ALL=wireData.map(w=>w.wid);
 let sel=null;
 const svg=document.getElementById('mainSvg');
 const TERM_PFX=['termSym_','termTail_','termSleeve_'];
-const WIRE_PFX=['wire_','wireBG_','dot33_','dotR_'];
+const WIRE_PFX=['wire_','wireBG_','wireOD_','dot33_','dotR_'];
 
 function getElems(wid){{
   return [...WIRE_PFX,...TERM_PFX].map(p=>document.getElementById(p+wid)).filter(Boolean);
@@ -288,6 +354,8 @@ function clearAll(){{
     getElems(wid).forEach(e=>{{e.style.opacity='';e.style.filter='';}});
     const wp=document.getElementById('wire_'+wid);
     if(wp)wp.setAttribute('stroke-width','2');
+    const wod0=document.getElementById('wireOD_'+wid);
+    if(wod0)wod0.setAttribute('stroke-width','2');
     const wb=document.getElementById('wireBG_'+wid);
     if(wb){{wb.setAttribute('stroke','#90A4AE');wb.setAttribute('stroke-width','3.4');}}
     ['rowL_','rowR_'].forEach(p=>{{
@@ -317,6 +385,8 @@ function highlight(wid){{
     const shadowCol=wd.isLight?'#37474F':wp.getAttribute('stroke');
     wp.style.filter='drop-shadow(0 0 6px '+shadowCol+')';
   }}
+  const wod=document.getElementById('wireOD_'+wid);
+  if(wod){{wod.style.opacity='1';wod.setAttribute('stroke-width','4');}}
   const wb=document.getElementById('wireBG_'+wid);
   if(wb){{wb.style.opacity='1';wb.setAttribute('stroke','#37474F');wb.setAttribute('stroke-width',wd.isLight?'5':'3.4');}}
   [...WIRE_PFX.slice(2),...TERM_PFX].forEach(p=>{{
@@ -472,8 +542,19 @@ def render_html(layout: DiagramLayout, title: str) -> str:
         )
     svg.append('</g>')
 
+    # Wires that belong to exactly-2-wire pairs are drawn later with crossing effect
+    wid_to_wl: dict[str, WireLayout] = {wl.wire.wid: wl for wl in layout.wire_layouts}
+    pair2_wids: set[str] = set()
+    pair2_pairs: list[tuple[WireLayout, WireLayout]] = []
+    drawn_pairs: set[str] = set()
+    for wids in layout.pair_groups.values():
+        if len(wids) == 2:
+            pair2_wids.update(wids)
+
     svg.append('<g id="wires">')
     for wl in layout.wire_layouts:
+        if wl.wire.wid in pair2_wids:
+            continue
         w   = wl.wire
         col = resolve(w.colour)
         d   = _bez(wl.y_left, wl.y_right)
@@ -496,40 +577,16 @@ def render_html(layout: DiagramLayout, title: str) -> str:
         )
     svg.append('</g>')
 
-    if layout.pair_groups:
-        wid_ymid = {wl.wire.wid: (wl.y_left + wl.y_right) // 2
-                    for wl in layout.wire_layouts}
-        svg.append('<g id="twistSyms">')
-        placed: list[tuple[int, int, int]] = []   # (cx, y_full_top, y_full_bot)
-        _OFFSETS = [0, 40, -40, 80, -80, 120, -120]
-        MAX_H = 2 * ROW_H
-        for pair_name, wids in layout.pair_groups.items():
-            ys = [wid_ymid[wid] for wid in wids if wid in wid_ymid]
-            if len(ys) < 2:
+    if pair2_wids:
+        svg.append('<g id="twistWires">')
+        for wids in layout.pair_groups.values():
+            if len(wids) != 2:
                 continue
-            top, bot = min(ys), max(ys)
-            if bot - top <= MAX_H:
-                h_top, h_bot = top, bot
-            else:
-                mid   = (top + bot) // 2
-                h_top = mid - MAX_H // 2
-                h_bot = mid + MAX_H // 2
-            y_full_top = min(top, h_top) - 16   # headroom for the label text
-            y_full_bot = max(bot, h_bot)
-            x_offset = 0   # fallback if all slots collide
-            for offset in _OFFSETS:
-                cx = _TWIST_X + offset
-                if not any(
-                    abs(cx - px) < _SYM_W
-                    and not (y_full_bot < py_top or y_full_top > py_bot)
-                    for px, py_top, py_bot in placed
-                ):
-                    x_offset = offset
-                    placed.append((cx, y_full_top, y_full_bot))
-                    break
-            else:
-                placed.append((_TWIST_X, y_full_top, y_full_bot))
-            svg.extend(_twist_sym_svg(ys, pair_name, x_offset))
+            key = wids[0] + ":" + wids[1]
+            if key in drawn_pairs:
+                continue
+            drawn_pairs.add(key)
+            svg.extend(_twisted_pair_svg(wid_to_wl[wids[0]], wid_to_wl[wids[1]]))
         svg.append('</g>')
 
     svg.append('<g id="terms">')
