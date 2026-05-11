@@ -165,6 +165,20 @@ Dir-,Main PCB,12,Drive D-Sub,39,White,,TP2
 
 Group names are arbitrary strings — `TP1`, `ENC_A`, `CAN`, etc. Wires without a `Pair` value are unaffected. The symbol is a passive visual indicator only; it does not change click-to-highlight behaviour.
 
+### Notes section
+
+Place a `Notes` label in the first column of any row, then put the note text in the row immediately below it:
+
+```
+Signal,Left Connector,Left Pin,Right Connector,Right Pin,Wire Colour
+Step+,Main PCB,9,Drive D-Sub,42,Purple
+...
+Notes
+All wires are 0.5mm² PTFE insulated. Twisted pairs at ≥1 turn per 25mm.
+```
+
+The text is rendered in a styled panel below the diagram in the HTML output. Multiple `Notes` blocks are supported — each produces a separate paragraph. Blank rows between the label and the text are ignored.
+
 ---
 
 ## Layout rules

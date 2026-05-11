@@ -11,7 +11,8 @@ from .colours import resolve, is_light, colour_name
 _SPAN    = WIRE_RIGHT_X - WIRE_LEFT_X
 _CP1_X   = round(WIRE_LEFT_X  + _SPAN * 0.38)   # departs horizontally from left
 _CP2_X   = round(WIRE_RIGHT_X - _SPAN * 0.15)   # arrives horizontally at right
-_TWIST_X = (WIRE_LEFT_X + WIRE_RIGHT_X) // 2    # geometric midpoint of wire span
+_TWIST_X = round(WIRE_LEFT_X/8 + 3*_CP1_X/8 + 3*_CP2_X/8 + WIRE_RIGHT_X/8)  # Bézier t=0.5 x
+_SYM_W   = 38   # helix symbol width in px (3×10-step + 2×4-pad)
 
 # ── Colour themes ─────────────────────────────────────────────────────────────
 _LEFT_THEME = {
@@ -47,25 +48,59 @@ def _bez(yl: int, yr: int) -> str:
     return f"M{WIRE_LEFT_X},{yl} C{_CP1_X},{yl} {_CP2_X},{yr} {WIRE_RIGHT_X},{yr}"
 
 
-def _twist_syms_svg(y1: int, y2: int) -> list[str]:
-    """Three cubic S-curves between two wire y-positions, centred at _TWIST_X."""
-    top, bot = (y1, y2) if y1 < y2 else (y2, y1)
+def _twist_sym_svg(ys: list[int], pair_name: str, x_offset: int = 0) -> list[str]:
+    """Helix symbol for one twisted-pair group at the given wire y-positions."""
+    if len(ys) < 2:
+        return []
+    top, bot = min(ys), max(ys)
     if bot - top < 4:
         return []
-    s  = 10                          # horizontal step per arc segment
-    x0 = _TWIST_X - s - s // 2      # start 1.5 steps left of centre
-    # Each segment: cubic Bézier that departs horizontally and arrives horizontally,
-    # creating a smooth S-curve alternating between top and bot.
-    d = (
-        f"M{x0},{top} "
-        f"C{x0+s},{top} {x0},{bot} {x0+s},{bot} "
-        f"C{x0+2*s},{bot} {x0+s},{top} {x0+2*s},{top} "
-        f"C{x0+3*s},{top} {x0+2*s},{bot} {x0+3*s},{bot}"
+
+    MAX_H = 2 * ROW_H   # 56 px cap — beyond this, add connector lines
+    s     = 10           # horizontal step; 3 segments → 30 px wide
+    cx    = _TWIST_X + x_offset
+    x0    = cx - (3 * s) // 2
+    pad   = 4
+
+    out: list[str] = []
+
+    if bot - top <= MAX_H:
+        h_top, h_bot = top, bot
+    else:
+        mid   = (top + bot) // 2
+        h_top = mid - MAX_H // 2
+        h_bot = mid + MAX_H // 2
+        # Dashed lines from helix tips to the outermost wire positions
+        out += [
+            f'<line x1="{cx}" y1="{top}" x2="{cx}" y2="{h_top}"'
+            f' stroke="#455A64" stroke-width="1.2" stroke-dasharray="3,2" pointer-events="none"/>',
+            f'<line x1="{cx}" y1="{h_bot}" x2="{cx}" y2="{bot}"'
+            f' stroke="#455A64" stroke-width="1.2" stroke-dasharray="3,2" pointer-events="none"/>',
+        ]
+
+    # White backing so the helix reads cleanly over any wire colour
+    out.append(
+        f'<rect x="{x0-pad}" y="{h_top-pad}" width="{3*s+2*pad}" height="{h_bot-h_top+2*pad}"'
+        f' rx="3" fill="white" fill-opacity="0.82" pointer-events="none"/>'
     )
-    return [
-        f'<path d="{d}" stroke="#455A64" stroke-width="1.5"'
-        f' fill="none" pointer-events="none"/>'
-    ]
+
+    d = (
+        f"M{x0},{h_top} "
+        f"C{x0+s},{h_top} {x0},{h_bot} {x0+s},{h_bot} "
+        f"C{x0+2*s},{h_bot} {x0+s},{h_top} {x0+2*s},{h_top} "
+        f"C{x0+3*s},{h_top} {x0+2*s},{h_bot} {x0+3*s},{h_bot}"
+    )
+    out.append(
+        f'<path d="{d}" stroke="#455A64" stroke-width="1.5" fill="none" pointer-events="none"/>'
+    )
+
+    # Pair-name label — white stroke halo keeps it legible over any background
+    out.append(
+        f'<text x="{cx}" y="{h_top-5}" text-anchor="middle" font-size="9" font-weight="bold"'
+        f' fill="#37474F" stroke="white" stroke-width="3" paint-order="stroke"'
+        f' pointer-events="none">{_x(pair_name)}</text>'
+    )
+    return out
 
 
 def _wrap(text: str, max_chars: int = 46) -> list[str]:
@@ -459,11 +494,36 @@ def render_html(layout: DiagramLayout, title: str) -> str:
         wid_ymid = {wl.wire.wid: (wl.y_left + wl.y_right) // 2
                     for wl in layout.wire_layouts}
         svg.append('<g id="twistSyms">')
-        for wids in layout.pair_groups.values():
-            if len(wids) >= 2:
-                y1 = wid_ymid.get(wids[0], 0)
-                y2 = wid_ymid.get(wids[-1], 0)
-                svg.extend(_twist_syms_svg(y1, y2))
+        placed: list[tuple[int, int, int]] = []   # (cx, y_full_top, y_full_bot)
+        _OFFSETS = [0, 40, -40, 80, -80, 120, -120]
+        MAX_H = 2 * ROW_H
+        for pair_name, wids in layout.pair_groups.items():
+            ys = [wid_ymid[wid] for wid in wids if wid in wid_ymid]
+            if len(ys) < 2:
+                continue
+            top, bot = min(ys), max(ys)
+            if bot - top <= MAX_H:
+                h_top, h_bot = top, bot
+            else:
+                mid   = (top + bot) // 2
+                h_top = mid - MAX_H // 2
+                h_bot = mid + MAX_H // 2
+            y_full_top = min(top, h_top) - 16   # headroom for the label text
+            y_full_bot = max(bot, h_bot)
+            x_offset = 0   # fallback if all slots collide
+            for offset in _OFFSETS:
+                cx = _TWIST_X + offset
+                if not any(
+                    abs(cx - px) < _SYM_W
+                    and not (y_full_bot < py_top or y_full_top > py_bot)
+                    for px, py_top, py_bot in placed
+                ):
+                    x_offset = offset
+                    placed.append((cx, y_full_top, y_full_bot))
+                    break
+            else:
+                placed.append((_TWIST_X, y_full_top, y_full_bot))
+            svg.extend(_twist_sym_svg(ys, pair_name, x_offset))
         svg.append('</g>')
 
     svg.append('<g id="terms">')
