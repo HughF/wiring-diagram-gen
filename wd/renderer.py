@@ -227,6 +227,7 @@ def _build_js(layout: DiagramLayout, title: str) -> str:
             "colName":   colour_name(w.colour),
             "isLight":   is_light(resolve(w.colour)),
             "hasTerm":   w.right_pin is None,
+            "length":    w.length,
         })
 
     safe_title = _x(title)
@@ -289,7 +290,7 @@ function highlight(wid){{
   document.getElementById('infoTitle').textContent=
     wd.signal+' ('+wd.leftConn+' Pin '+wd.leftPin+' → '+wd.rightDesc+')';
   document.getElementById('infoSub').textContent=
-    'Wire: '+wd.colName+(wd.hasTerm?' | Termination: '+wd.rightDesc:'');
+    'Wire: '+wd.colName+(wd.hasTerm?' | Termination: '+wd.rightDesc:'')+(wd.length?' | Length: '+wd.length:'');
 }}
 document.querySelectorAll('[id^="rowL_"],[id^="rowR_"]').forEach(r=>
   r.dataset.origFill=r.getAttribute('fill'));
@@ -311,6 +312,90 @@ document.getElementById('dlHtml').addEventListener('click',function(e){{
   a.download='{safe_title}.html';a.click();
 }});
 """
+
+
+def _notes_html(notes: list[str]) -> str:
+    if not notes:
+        return ""
+    paras = "".join(f"<p>{_x(n)}</p>" for n in notes)
+    return f'<div id="notes"><h2>Notes</h2>{paras}</div>'
+
+
+def _parse_length(raw: str) -> tuple[float, str] | None:
+    """Return (value, unit) from a raw length string, or None if unparseable."""
+    s = raw.strip()
+    unit = ""
+    for u in ("mm", "cm", "ft", "m"):   # longest-match order prevents 'mm'→'m' mis-parse
+        if s.lower().endswith(u):
+            s = s[:-len(u)].strip()
+            unit = u
+            break
+    try:
+        return float(s), unit
+    except ValueError:
+        return None
+
+
+def _cut_list_html(layout: DiagramLayout) -> str:
+    wires = [wl.wire for wl in layout.wire_layouts]
+    if not any(w.length for w in wires):
+        return ""
+
+    # Sort by left connector diagram order, then pin
+    conn_order = {cl.spec.name: i for i, cl in enumerate(layout.left_connectors)}
+    sorted_wires = sorted(wires, key=lambda w: (conn_order.get(w.left_conn, 999), w.left_pin))
+
+    rows: list[str] = []
+    for w in sorted_wires:
+        col      = resolve(w.colour)
+        col_nm   = colour_name(w.colour)
+        right_pin = str(w.right_pin) if w.right_pin is not None else "—"
+        length   = _x(w.length) if w.length else "—"
+        swatch   = f'<span class="swatch" style="background:{col}"></span>'
+        rows.append(
+            f"<tr>"
+            f"<td>{_x(w.signal)}</td>"
+            f"<td>{_x(w.left_conn)}</td><td>{w.left_pin}</td>"
+            f"<td>{_x(w.right_conn)}</td><td>{right_pin}</td>"
+            f"<td>{swatch}{_x(col_nm)}</td>"
+            f"<td>{length}</td>"
+            f"</tr>"
+        )
+
+    # Totals per (colour, unit) — only wires with parseable lengths
+    totals: dict[tuple[str, str], float] = {}
+    has_unparsed = False
+    for w in sorted_wires:
+        if not w.length:
+            continue
+        parsed = _parse_length(w.length)
+        if parsed is None:
+            has_unparsed = True
+            continue
+        val, unit = parsed
+        key = (colour_name(w.colour), unit)
+        totals[key] = totals.get(key, 0.0) + val
+
+    tfoot = ""
+    if totals:
+        note = " *" if has_unparsed else ""
+        total_rows = "".join(
+            f'<tr><td colspan="6" class="tot-label">{_x(col_nm)} ({unit or "no unit"}){note}</td>'
+            f'<td class="tot-val">{val:.4g}{unit}</td></tr>'
+            for (col_nm, unit), val in sorted(totals.items())
+        )
+        disclaimer = (
+            '<tr><td colspan="7" class="tot-note">* Some wires have non-numeric lengths and are excluded from totals.</td></tr>'
+            if has_unparsed else ""
+        )
+        tfoot = f"<tfoot>{total_rows}{disclaimer}</tfoot>"
+
+    return (
+        '<div id="cutList"><h2>Cut list</h2>'
+        '<table><thead><tr>'
+        "<th>Signal</th><th>From</th><th>Pin</th><th>To</th><th>Pin</th><th>Colour</th><th>Length</th>"
+        f"</tr></thead><tbody>{''.join(rows)}</tbody>{tfoot}</table></div>"
+    )
 
 
 # ── Main render entry point ───────────────────────────────────────────────────
@@ -431,6 +516,22 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
 .btn-blue{{background:#1565C0}}.btn-blue:hover{{background:#0D47A1}}
 .btn-green{{background:#2E7D32}}.btn-green:hover{{background:#1B5E20}}
 #hint{{font-size:12px;color:#dde}}
+#notes,#cutList{{margin-top:16px;background:white;border-radius:8px;padding:16px 22px;
+  max-width:{W}px;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.25)}}
+#notes h2,#cutList h2{{font-size:14px;font-weight:700;color:#1A237E;margin-bottom:8px;
+  border-bottom:1px solid #C5CAE9;padding-bottom:6px}}
+#notes p{{font-size:13px;color:#263238;line-height:1.5;margin-top:6px}}
+#cutList table{{width:100%;border-collapse:collapse;font-size:12px}}
+#cutList th{{text-align:left;padding:5px 8px;background:#E8EAF6;color:#1A237E;
+  font-weight:700;border-bottom:2px solid #9FA8DA}}
+#cutList td{{padding:4px 8px;border-bottom:1px solid #ECEFF1;color:#263238}}
+#cutList tbody tr:nth-child(even) td{{background:#F5F7FA}}
+#cutList tfoot .tot-label{{text-align:right;font-weight:600;background:#E8EAF6;
+  border-top:2px solid #9FA8DA}}
+#cutList tfoot .tot-val{{font-weight:600;background:#E8EAF6;border-top:2px solid #9FA8DA}}
+#cutList tfoot .tot-note{{font-size:11px;color:#78909C;font-style:italic}}
+.swatch{{display:inline-block;width:10px;height:10px;border-radius:2px;
+  border:1px solid rgba(0,0,0,.25);margin-right:5px;vertical-align:middle}}
 </style></head><body>
 <div id="svgWrap">{chr(10).join(svg)}</div>
 <div id="controls">
@@ -438,5 +539,7 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
 <a class="btn btn-green" id="dlHtml" href="#">&#11015; Download HTML</a>
 <span id="hint">Click any wire, pin row, or termination row to highlight. Click again or Esc to clear.</span>
 </div>
+{_notes_html(layout.notes)}
+{_cut_list_html(layout)}
 <script>{_build_js(layout, title)}</script>
 </body></html>"""

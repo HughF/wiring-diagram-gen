@@ -16,6 +16,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
     "colour":      ["wire colour", "wire color", "colour", "color", "wire col"],
     "warning":     ["warning", "note", "notes", "annotation", "remark"],
     "pair":        ["pair", "twisted pair", "tp", "pair group", "cable group"],
+    "length":      ["length", "wire length", "len"],
 }
 
 
@@ -45,6 +46,7 @@ class Wire:
     colour: str             # raw name as written in CSV
     warning: str | None
     pair: str               # pair group name; empty string = unpaired
+    length: str             # raw length string as written in CSV; empty = unspecified
 
 
 @dataclass
@@ -55,10 +57,12 @@ class ConnectorSpec:
     order: int          # first-appearance order in the CSV
 
 
-def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
+def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
     wires: list[Wire] = []
     conn_seen: dict[tuple[str, str], ConnectorSpec] = {}  # keyed by (name, side)
     conn_order = 0
+    notes: list[str] = []
+    next_is_notes = False
 
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -76,6 +80,17 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
                 col_map = _map_headers(headers)
                 continue
 
+            if next_is_notes:
+                text = " ".join(c.strip() for c in row if c.strip())
+                if text:
+                    notes.append(text)
+                next_is_notes = False
+                continue
+
+            if row[0].strip().lower() == "notes":
+                next_is_notes = True
+                continue
+
             def get(field: str) -> str:
                 idx = col_map.get(field)
                 return row[idx].strip() if idx is not None and idx < len(row) else ""
@@ -91,6 +106,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
             colour = get("colour") or "grey"
             warning = get("warning") or None
             pair = get("pair")
+            length = get("length")
 
             if not left_conn or not left_pin_s:
                 continue
@@ -117,6 +133,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
                 colour=colour,
                 warning=warning,
                 pair=pair,
+                length=length,
             ))
 
             for name, side, free in [
@@ -130,4 +147,4 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
                     conn_order += 1
 
     connectors = sorted(conn_seen.values(), key=lambda c: c.order)
-    return wires, connectors
+    return wires, connectors, notes

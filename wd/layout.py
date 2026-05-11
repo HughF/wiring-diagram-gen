@@ -59,6 +59,7 @@ class DiagramLayout:
     right_connectors: list[ConnectorLayout]
     wire_layouts: list[WireLayout]
     pair_groups: dict[str, list[str]]  # pair name → ordered list of wids
+    notes: list[str]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ def compute_layout(
     wires: list[Wire],
     connectors: list[ConnectorSpec],
     svg_width: int = 1380,
+    notes: list[str] | None = None,
 ) -> DiagramLayout:
 
     left_specs  = [c for c in connectors if c.side == "left"]
@@ -165,4 +167,5 @@ def compute_layout(
         right_connectors=right_layouts,
         wire_layouts=wire_layouts,
         pair_groups=pair_groups,
+        notes=notes or [],
     )
