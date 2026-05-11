@@ -57,7 +57,7 @@ class ConnectorSpec:
 
 def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
     wires: list[Wire] = []
-    conn_seen: dict[str, ConnectorSpec] = {}
+    conn_seen: dict[tuple[str, str], ConnectorSpec] = {}  # keyed by (name, side)
     conn_order = 0
 
     with open(path, newline="", encoding="utf-8-sig") as f:
@@ -123,8 +123,8 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
                 (left_conn, "left", False),
                 (right_conn, "right", right_pin is None),
             ]:
-                if name and name not in conn_seen:
-                    conn_seen[name] = ConnectorSpec(
+                if name and (name, side) not in conn_seen:
+                    conn_seen[(name, side)] = ConnectorSpec(
                         name=name, side=side, is_free_end=free, order=conn_order,
                     )
                     conn_order += 1
