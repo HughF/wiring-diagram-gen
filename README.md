@@ -66,8 +66,9 @@ natural in your spreadsheet. The accepted aliases for each field are listed belo
 | Right pin | `Right Pin`, `To Pin`, `Dest Pin`, `Destination Pin`, `Pin (Right)`, `Right Pin No` |
 | Wire colour | `Wire Colour`, `Wire Color`, `Colour`, `Color`, `Wire Col` |
 | Warning | `Warning`, `Note`, `Notes`, `Annotation`, `Remark` |
+| Twisted pair group | `Pair`, `Twisted Pair`, `TP`, `Pair Group`, `Cable Group` |
 
-The `Warning` column is optional. All other fields are required.
+The `Warning` and `Pair` columns are optional. All other fields are required.
 
 ### Wire rows
 
@@ -150,6 +151,19 @@ The three identical warnings above produce one box in the "AC Mains" section.
 
 Warning boxes only appear on right-side panels. Text longer than ~46 characters
 is word-wrapped automatically (up to 3 lines).
+
+### Twisted pair groups
+
+Assign a group name in the `Pair` column to mark wires that run as a twisted pair. Any two (or more) wires sharing the same group name get a small helix symbol drawn between them at the midpoint of the wire span.
+
+```
+Step+,Main PCB,9,Drive D-Sub,42,Purple,,TP1
+Step-,Main PCB,10,Drive D-Sub,41,Red,,TP1
+Dir+,Main PCB,11,Drive D-Sub,40,Green,,TP2
+Dir-,Main PCB,12,Drive D-Sub,39,White,,TP2
+```
+
+Group names are arbitrary strings — `TP1`, `ENC_A`, `CAN`, etc. Wires without a `Pair` value are unaffected. The symbol is a passive visual indicator only; it does not change click-to-highlight behaviour.
 
 ---
 

@@ -8,9 +8,10 @@ from .layout import (
 from .colours import resolve, is_light, colour_name
 
 # Bezier control-point x positions, tuned to match the reference diagram style.
-_SPAN  = WIRE_RIGHT_X - WIRE_LEFT_X
-_CP1_X = round(WIRE_LEFT_X  + _SPAN * 0.38)   # departs horizontally from left
-_CP2_X = round(WIRE_RIGHT_X - _SPAN * 0.15)   # arrives horizontally at right
+_SPAN    = WIRE_RIGHT_X - WIRE_LEFT_X
+_CP1_X   = round(WIRE_LEFT_X  + _SPAN * 0.38)   # departs horizontally from left
+_CP2_X   = round(WIRE_RIGHT_X - _SPAN * 0.15)   # arrives horizontally at right
+_TWIST_X = (WIRE_LEFT_X + WIRE_RIGHT_X) // 2    # geometric midpoint of wire span
 
 # ── Colour themes ─────────────────────────────────────────────────────────────
 _LEFT_THEME = {
@@ -44,6 +45,27 @@ def _x(s: str) -> str:
 
 def _bez(yl: int, yr: int) -> str:
     return f"M{WIRE_LEFT_X},{yl} C{_CP1_X},{yl} {_CP2_X},{yr} {WIRE_RIGHT_X},{yr}"
+
+
+def _twist_syms_svg(y1: int, y2: int) -> list[str]:
+    """Three cubic S-curves between two wire y-positions, centred at _TWIST_X."""
+    top, bot = (y1, y2) if y1 < y2 else (y2, y1)
+    if bot - top < 4:
+        return []
+    s  = 10                          # horizontal step per arc segment
+    x0 = _TWIST_X - s - s // 2      # start 1.5 steps left of centre
+    # Each segment: cubic Bézier that departs horizontally and arrives horizontally,
+    # creating a smooth S-curve alternating between top and bot.
+    d = (
+        f"M{x0},{top} "
+        f"C{x0+s},{top} {x0},{bot} {x0+s},{bot} "
+        f"C{x0+2*s},{bot} {x0+s},{top} {x0+2*s},{top} "
+        f"C{x0+3*s},{top} {x0+2*s},{bot} {x0+3*s},{bot}"
+    )
+    return [
+        f'<path d="{d}" stroke="#455A64" stroke-width="1.5"'
+        f' fill="none" pointer-events="none"/>'
+    ]
 
 
 def _wrap(text: str, max_chars: int = 46) -> list[str]:
@@ -347,6 +369,17 @@ def render_html(layout: DiagramLayout, title: str) -> str:
             f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
         )
     svg.append('</g>')
+
+    if layout.pair_groups:
+        wid_ymid = {wl.wire.wid: (wl.y_left + wl.y_right) // 2
+                    for wl in layout.wire_layouts}
+        svg.append('<g id="twistSyms">')
+        for wids in layout.pair_groups.values():
+            if len(wids) >= 2:
+                y1 = wid_ymid.get(wids[0], 0)
+                y2 = wid_ymid.get(wids[-1], 0)
+                svg.extend(_twist_syms_svg(y1, y2))
+        svg.append('</g>')
 
     svg.append('<g id="terms">')
     for wl in layout.wire_layouts:

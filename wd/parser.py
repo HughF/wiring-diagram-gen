@@ -15,6 +15,7 @@ COLUMN_ALIASES: dict[str, list[str]] = {
                     "pin (right)", "right pin no"],
     "colour":      ["wire colour", "wire color", "colour", "color", "wire col"],
     "warning":     ["warning", "note", "notes", "annotation", "remark"],
+    "pair":        ["pair", "twisted pair", "tp", "pair group", "cable group"],
 }
 
 
@@ -43,6 +44,7 @@ class Wire:
     right_pin: int | None   # None = free-end / termination group
     colour: str             # raw name as written in CSV
     warning: str | None
+    pair: str               # pair group name; empty string = unpaired
 
 
 @dataclass
@@ -88,6 +90,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
             right_pin_s = get("right_pin")
             colour = get("colour") or "grey"
             warning = get("warning") or None
+            pair = get("pair")
 
             if not left_conn or not left_pin_s:
                 continue
@@ -113,6 +116,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec]]:
                 right_pin=right_pin,
                 colour=colour,
                 warning=warning,
+                pair=pair,
             ))
 
             for name, side, free in [
