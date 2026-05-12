@@ -64,7 +64,8 @@ class DiagramLayout:
     left_connectors: list[ConnectorLayout]
     right_connectors: list[ConnectorLayout]
     wire_layouts: list[WireLayout]
-    pair_groups: dict[str, list[str]]  # pair name → ordered list of wids
+    pair_groups: dict[str, list[str]]   # pair name → ordered list of wids
+    cable_groups: dict[str, list[str]]  # cable name → ordered list of wids
     notes: list[str]
 
 
@@ -165,6 +166,11 @@ def compute_layout(
         if w.pair:
             pair_groups.setdefault(w.pair, []).append(w.wid)
 
+    cable_groups: dict[str, list[str]] = {}
+    for w in wires:
+        if w.cable:
+            cable_groups.setdefault(w.cable, []).append(w.wid)
+
     svg_height = max(left_bottom, right_bottom) + BOTTOM_INFO_H
     return DiagramLayout(
         svg_width=svg_width,
@@ -173,5 +179,6 @@ def compute_layout(
         right_connectors=right_layouts,
         wire_layouts=wire_layouts,
         pair_groups=pair_groups,
+        cable_groups=cable_groups,
         notes=notes or [],
     )

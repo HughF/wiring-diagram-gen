@@ -23,6 +23,16 @@ _TWIST_T0 = 0.30   # Bézier parameter where the twist zone begins
 _TWIST_T1 = 0.70   # Bézier parameter where the twist zone ends (one full twist → N must be int)
 _N_SAMP   = 60     # polyline sample count for twisted wire paths
 
+# ── Cable band colour palette (stroke, fill) ─────────────────────────────────
+_CABLE_PALETTE = [
+    ("#546E7A", "#B0BEC5"),   # blue-grey
+    ("#5D4037", "#D7B9AC"),   # brown
+    ("#2E7D32", "#A5D6A7"),   # green
+    ("#E65100", "#FFCC80"),   # orange
+    ("#6A1B9A", "#CE93D8"),   # purple
+    ("#00695C", "#80CBC4"),   # teal
+]
+
 # ── Colour themes ─────────────────────────────────────────────────────────────
 _LEFT_THEME = {
     "bg": "#ECEFF1", "border": "#37474F", "header": "#37474F",
@@ -174,6 +184,30 @@ def _twisted_pair_svg(wl1: WireLayout, wl2: WireLayout) -> list[str]:
         ]
 
     return out
+
+
+def _cable_band_svg(name: str, cable_idx: int, wids: list[str],
+                    wid_to_wl: dict[str, "WireLayout"]) -> list[str]:
+    wls = [wid_to_wl[wid] for wid in wids if wid in wid_to_wl]
+    if not wls:
+        return []
+    stroke_col, fill_col = _CABLE_PALETTE[cable_idx % len(_CABLE_PALETTE)]
+    pad = 6
+    yl_lo = min(wl.y_left  for wl in wls) - pad
+    yl_hi = max(wl.y_left  for wl in wls) + pad
+    yr_lo = min(wl.y_right for wl in wls) - pad
+    yr_hi = max(wl.y_right for wl in wls) + pad
+    x0, x1 = WIRE_LEFT_X - 4, WIRE_RIGHT_X + 4
+    pts = f"{x0},{yl_lo} {x1},{yr_lo} {x1},{yr_hi} {x0},{yl_hi}"
+    lx  = (x0 + x1) // 2
+    ly  = (yl_lo + yr_lo) // 2 - 9   # baseline sits 9px above the band's top edge
+    return [
+        f'<polygon points="{pts}" fill="{fill_col}" fill-opacity="0.25"'
+        f' stroke="{stroke_col}" stroke-width="1.2" stroke-dasharray="6,3"'
+        f' pointer-events="none"/>',
+        f'<text x="{lx}" y="{ly}" text-anchor="middle" font-size="12"'
+        f' fill="{stroke_col}" font-style="italic" pointer-events="none">{_x(name)}</text>',
+    ]
 
 
 def _wrap(text: str, max_chars: int = 46) -> list[str]:
@@ -466,12 +500,29 @@ def _cut_list_html(layout: DiagramLayout) -> str:
     if not any(w.length for w in wires):
         return ""
 
-    # Sort by left connector diagram order, then pin
     conn_order = {cl.spec.name: i for i, cl in enumerate(layout.left_connectors)}
-    sorted_wires = sorted(wires, key=lambda w: (conn_order.get(w.left_conn, 999), _pin_key(w.left_pin)))
+    has_cables = any(w.cable for w in wires)
+
+    if has_cables:
+        sorted_wires = sorted(wires, key=lambda w: (
+            0 if w.cable else 1,
+            w.cable,
+            conn_order.get(w.left_conn, 999),
+            _pin_key(w.left_pin),
+        ))
+    else:
+        sorted_wires = sorted(wires, key=lambda w: (conn_order.get(w.left_conn, 999), _pin_key(w.left_pin)))
 
     rows: list[str] = []
+    last_cable: str | None = None
     for w in sorted_wires:
+        if has_cables and w.cable != last_cable:
+            last_cable = w.cable
+            if w.cable:
+                rows.append(
+                    f'<tr class="cable-hdr"><td colspan="7">'
+                    f'<span data-i18n="cable_group">Cable</span>: {_x(w.cable)}</td></tr>'
+                )
         col      = resolve(w.colour)
         col_nm   = colour_name(w.colour)
         right_pin = str(w.right_pin) if w.right_pin is not None else "—"
@@ -564,8 +615,15 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en") -> 
         )
     svg.append('</g>')
 
-    # Wires that belong to exactly-2-wire pairs are drawn later with crossing effect
     wid_to_wl: dict[str, WireLayout] = {wl.wire.wid: wl for wl in layout.wire_layouts}
+
+    if layout.cable_groups:
+        svg.append('<g id="cableBands">')
+        for ci, (cname, wids) in enumerate(layout.cable_groups.items()):
+            svg.extend(_cable_band_svg(cname, ci, wids, wid_to_wl))
+        svg.append('</g>')
+
+    # Wires that belong to exactly-2-wire pairs are drawn later with crossing effect
     pair2_wids: set[str] = set()
     pair2_pairs: list[tuple[WireLayout, WireLayout]] = []
     drawn_pairs: set[str] = set()
@@ -685,6 +743,8 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
   border-top:2px solid #9FA8DA}}
 #cutList tfoot .tot-val{{font-weight:600;background:#E8EAF6;border-top:2px solid #9FA8DA}}
 #cutList tfoot .tot-note{{font-size:11px;color:#78909C;font-style:italic}}
+#cutList tr.cable-hdr td{{background:#E8EAF6;font-weight:700;color:#1A237E;
+  font-style:italic;padding:6px 8px;border-top:2px solid #9FA8DA}}
 .swatch{{display:inline-block;width:10px;height:10px;border-radius:2px;
   border:1px solid rgba(0,0,0,.25);margin-right:5px;vertical-align:middle}}
 </style></head><body>

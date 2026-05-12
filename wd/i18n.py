@@ -27,4 +27,5 @@ STRINGS: dict[str, dict[str, str]] = {
     "info_term":     {"en": "Termination", "zh": "接线方式"},
     "info_length":   {"en": "Length",      "zh": "长度"},
     "lang_switch":   {"en": "中文",         "zh": "English"},
+    "cable_group":   {"en": "Cable",        "zh": "电缆"},
 }
