@@ -8,7 +8,7 @@ from .layout import (
     CONN_HEADER_H, ROW_H, BOT_PAD, WARN_BOX_PAD, WARN_BOX_H,
     WIRE_LEFT_X, WIRE_RIGHT_X,
 )
-from .colours import resolve, resolve_pair, is_light, colour_name
+from .colours import resolve, resolve_pair, is_light, colour_name, COLOUR_MAP
 
 def _pin_key(pin: str) -> list:
     return [int(c) if c.isdigit() else c.lower()
@@ -236,6 +236,60 @@ def _wrap(text: str, max_chars: int = 46) -> list[str]:
     return lines
 
 
+# ── Sleeve rendering ──────────────────────────────────────────────────────────
+_SLEEVE_X = WIRE_RIGHT_X - 16   # left edge of sleeve band on the wire
+
+
+def _resolve_sleeve(raw: str) -> tuple[str, str] | None:
+    """Return ('color', hex) or ('label', text), or None if no sleeve."""
+    n = raw.strip()
+    if not n:
+        return None
+    if n.startswith('#'):
+        return ('color', n)
+    if n.lower() in COLOUR_MAP:
+        return ('color', COLOUR_MAP[n.lower()])
+    pair = resolve_pair(n)
+    if pair:
+        return ('color', pair[0])
+    return ('label', n)
+
+
+def _sleeve_svg(wid: str, y: int, sleeving: str) -> list[str]:
+    """Return SVG elements for a sleeve band drawn on the wire near the right endpoint."""
+    spec = _resolve_sleeve(sleeving)
+    if spec is None:
+        return []
+    kind, val = spec
+    if kind == 'color':
+        return [
+            f'<rect id="sleeve_{wid}" x="{_SLEEVE_X}" y="{y-5}" width="14" height="10" rx="2"'
+            f' fill="{val}" stroke="white" stroke-width="1" pointer-events="none"/>',
+        ]
+    # label sleeve: white background with text
+    lx = _SLEEVE_X - 2
+    return [
+        f'<g id="sleeve_{wid}" pointer-events="none">',
+        f'<rect x="{lx}" y="{y-6}" width="18" height="12" rx="2"'
+        f' fill="#F5F5F5" stroke="#546E7A" stroke-width="1"/>',
+        f'<text x="{lx+9}" y="{y+4}" text-anchor="middle" font-size="7.5"'
+        f' font-weight="bold" fill="#263238">{_x(val)}</text>',
+        '</g>',
+    ]
+
+
+def _effective_sleeve(w: "Wire") -> str:
+    """Return the sleeve spec to draw for a wire (explicit column or auto for 1/4 spade L/N/E)."""
+    if w.sleeving:
+        return w.sleeving
+    if w.right_pin is None and w.right_conn:
+        t = w.right_conn.lower()
+        if "1/4" in t or "large spade" in t:
+            return {"L": "#795548", "N": "#1565C0", "E": "#388E3C"}.get(
+                w.signal.strip().upper(), "")
+    return ""
+
+
 # ── Termination symbols ───────────────────────────────────────────────────────
 def _term_sym(wid: str, term: str, cy: int, col: str, signal: str = "") -> list[str]:
     t = term.lower()
@@ -256,15 +310,11 @@ def _term_sym(wid: str, term: str, cy: int, col: str, signal: str = "") -> list[
             f' fill="{col}" stroke="white" stroke-width="1" pointer-events="none"/>',
         ]
     elif "1/4" in t or "large spade" in t:
-        sig = signal.strip().upper()
-        sleeve = "#795548" if sig == "L" else "#1565C0" if sig == "N" else "#388E3C"
         out += [
             f'<line id="termTail_{wid}" x1="954" y1="{cy}" x2="960" y2="{cy}"'
             f' stroke="{col}" stroke-width="3" stroke-linecap="round" pointer-events="none"/>',
             f'<polygon id="termSym_{wid}" points="982,{cy-6} 968,{cy-6} 960,{cy} 968,{cy+6} 982,{cy+6}"'
             f' fill="{col}" stroke="white" stroke-width="1" pointer-events="none"/>',
-            f'<rect id="termSleeve_{wid}" x="982" y="{cy-8}" width="12" height="16" rx="3"'
-            f' fill="{sleeve}" stroke="white" stroke-width="0.8" pointer-events="none"/>',
         ]
     elif "bare" in t or "strip" in t:
         out.append(
@@ -381,6 +431,7 @@ def _build_js(layout: DiagramLayout, title: str, default_lang: str = "en") -> st
             "colName":  colour_name(w.colour),
             "isLight":  is_light(resolve(w.colour)),
             "length":   w.length,
+            "sleeving": w.sleeving,
         })
 
     safe_title = _x(title)
@@ -393,8 +444,8 @@ const ALL=wireData.map(w=>w.wid);
 let sel=null;
 let curLang=localStorage.getItem('wdLang')||'{default_lang}';
 const svg=document.getElementById('mainSvg');
-const TERM_PFX=['termSym_','termTail_','termSleeve_'];
-const WIRE_PFX=['wire_','wireBG_','wireB2_','wireOD_','dot33_','dotR_'];
+const TERM_PFX=['termSym_','termTail_'];
+const WIRE_PFX=['wire_','wireBG_','wireB2_','wireOD_','dot33_','dotR_','sleeve_'];
 function t(k){{return((LANG[k]||{{}})[curLang]||(LANG[k]||{{}})['en'])||k;}}
 function setLang(lang){{
   curLang=lang;
@@ -472,7 +523,7 @@ function renderInfoPanel(wid){{
   document.getElementById('infoTitle').textContent=
     wd.signal+' ('+wd.leftConn+' '+t('info_pin')+' '+wd.leftPin+' → '+rDesc+')';
   document.getElementById('infoSub').textContent=
-    t('info_wire')+': '+wd.colName+(wd.rightPin===null?' | '+t('info_term')+': '+rDesc:'')+(wd.length?' | '+t('info_length')+': '+wd.length:'');
+    t('info_wire')+': '+wd.colName+(wd.rightPin===null?' | '+t('info_term')+': '+rDesc:'')+(wd.sleeving?' | '+t('info_sleeving')+': '+wd.sleeving:'')+(wd.length?' | '+t('info_length')+': '+wd.length:'');
 }}
 document.querySelectorAll('[id^="rowL_"],[id^="rowR_"]').forEach(r=>
   r.dataset.origFill=r.getAttribute('fill'));
@@ -769,6 +820,13 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en") -> 
             drawn_pairs.add(key)
             svg.extend(_twisted_pair_svg(wid_to_wl[wids[0]], wid_to_wl[wids[1]]))
         svg.append('</g>')
+
+    svg.append('<g id="sleeves">')
+    for wl in layout.wire_layouts:
+        slv = _effective_sleeve(wl.wire)
+        if slv:
+            svg.extend(_sleeve_svg(wl.wire.wid, wl.y_right, slv))
+    svg.append('</g>')
 
     svg.append('<g id="terms">')
     for wl in layout.wire_layouts:

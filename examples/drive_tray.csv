@@ -1,10 +1,10 @@
 # Drive Tray Harness — wiring diagram example.
 # Blank lines are ignored. Lines starting with # are comments.
 # Column names are matched case-insensitively; see parser.py for recognised aliases.
-Signal,Left Connector,Left Pin,Right Connector,Right Pin,Wire Colour,Warning,Pair,Cable
-L,33-pin Connector,1,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex
-N,33-pin Connector,2,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex
-E,33-pin Connector,3,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex
+Signal,Left Connector,Left Pin,Right Connector,Right Pin,Wire Colour,Warning,Pair,Cable,Sleeving
+L,33-pin Connector,1,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex,Brown
+N,33-pin Connector,2,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex,Blue
+E,33-pin Connector,3,1/4 female spade,,Black,Wires L/N/E are BLACK. Add 20mm sleeving before crimping spade terminals.,,Mains Flex,Green/Yellow
 
 24v,33-pin Connector,4,Bootlace ferrule,,Red,,,
 TTL-GND (power meter),33-pin Connector,5,Bootlace ferrule,,Green,,,

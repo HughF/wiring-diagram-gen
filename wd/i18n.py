@@ -26,6 +26,7 @@ STRINGS: dict[str, dict[str, str]] = {
     "info_wire":     {"en": "Wire",        "zh": "导线"},
     "info_term":     {"en": "Termination", "zh": "接线方式"},
     "info_length":   {"en": "Length",      "zh": "长度"},
+    "info_sleeving": {"en": "Sleeving",    "zh": "套管"},
     "lang_switch":   {"en": "中文",         "zh": "English"},
     "cable_group":       {"en": "Cable",                    "zh": "电缆"},
     "totals_cables":     {"en": "Cable lengths required",    "zh": "所需电缆长度"},

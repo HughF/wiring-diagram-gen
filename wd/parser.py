@@ -20,6 +20,7 @@ _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "pair":        ("pair", "twisted pair", "tp", "pair group"),
     "cable":       ("cable", "cable group", "cable name", "sheath", "multicore", "cable ref"),
     "length":      ("length", "wire length", "len"),
+    "sleeving":    ("sleeving", "sleeve", "sleeved"),
 }
 
 
@@ -52,6 +53,7 @@ class Wire:
     pair: str               # pair group name; empty string = unpaired
     cable: str              # cable/sheath group name; empty string = individual wire
     length: str             # raw length string as written in CSV; empty = unspecified
+    sleeving: str           # sleeve colour/label for wire end; empty = none
 
 
 @dataclass
@@ -113,6 +115,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
             pair = get("pair")
             cable = get("cable")
             length = get("length")
+            sleeving = get("sleeving")
 
             if not left_conn or not left_pin_s:
                 continue
@@ -135,6 +138,7 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
                 pair=pair,
                 cable=cable,
                 length=length,
+                sleeving=sleeving,
             ))
 
             for name, side, free in [

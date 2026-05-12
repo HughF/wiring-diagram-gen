@@ -74,6 +74,7 @@ natural in your spreadsheet. The accepted aliases for each field are listed belo
 | Twisted pair group | `Pair`, `Twisted Pair`, `TP`, `Pair Group` | No |
 | Cable / multicore group | `Cable`, `Cable Group`, `Cable Name`, `Sheath`, `Multicore`, `Cable Ref` | No |
 | Wire length | `Length`, `Wire Length`, `Len` | No |
+| Sleeve colour / label | `Sleeving`, `Sleeve`, `Sleeved` | No |
 
 ### Wire rows
 
@@ -160,6 +161,34 @@ yellow dashes. Any of the following names produce the same result:
 Bicolour wires are drawn as two overlapping dashed paths (green and yellow alternating).
 Endpoint dots use a yellow fill with a green stroke. In the cut list, the colour swatch
 shows a diagonal split of both colours.
+
+### Sleeve colours / labels
+
+Add a `Sleeving` column to show a coloured or labelled sleeve band drawn on the
+conductor just before it enters the right-side termination panel.
+
+```csv
+Signal,Left Connector,Left Pin,Right Connector,Right Pin,Wire Colour,Sleeving
+L,Main PCB,1,1/4 female spade,,Black,Brown
+N,Main PCB,2,1/4 female spade,,Black,Blue
+E,Main PCB,3,1/4 female spade,,Black,Green/Yellow
+Fan,Main PCB,4,Bootlace ferrule,,Red,1
+Motor,Main PCB,5,Bootlace ferrule,,Black,2
+```
+
+The sleeve value can be:
+
+| Value | Rendered as |
+|---|---|
+| A colour name (e.g. `Brown`, `Blue`) | Filled coloured band using the same names as the wire colour column |
+| A hex colour (e.g. `#795548`) | Filled band in that hex colour |
+| A bicolour alias (e.g. `Green/Yellow`, `Earth`) | Band using the primary colour |
+| Any other short text (e.g. `1`, `2`, `A`) | White/grey band with the text printed on it |
+| Empty | No sleeve drawn |
+
+For `1/4 female spade` terminals without an explicit `Sleeving` value, the
+standard IEC colours are applied automatically (brown for L, blue for N,
+green for E). Set an explicit value to override.
 
 ### Warning boxes
 
