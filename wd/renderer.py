@@ -562,34 +562,84 @@ def _cut_list_html(layout: DiagramLayout) -> str:
             f"</tr>"
         )
 
-    # Totals per (colour, unit) — only wires with parseable lengths
-    totals: dict[tuple[str, str], float] = {}
-    has_unparsed = False
+    # Cable conductors are excluded from per-colour totals: you buy the cable
+    # as a unit, so only ungrouped conductors contribute to colour totals.
+    cable_max: dict[str, tuple[float, str]] = {}   # cable_name → (max conductor length, unit)
+    cable_has_unparsed: set[str] = set()
+    colour_totals: dict[tuple[str, str], float] = {}
+    has_unparsed_ungrouped = False
+
     for w in sorted_wires:
         if not w.length:
             continue
         parsed = _parse_length(w.length)
-        if parsed is None:
-            has_unparsed = True
-            continue
-        val, unit = parsed
-        key = (colour_name(w.colour), unit)
-        totals[key] = totals.get(key, 0.0) + val
+        if w.cable:
+            if parsed is None:
+                cable_has_unparsed.add(w.cable)
+            else:
+                val, unit = parsed
+                prev = cable_max.get(w.cable)
+                if prev is None or val > prev[0]:
+                    cable_max[w.cable] = (val, unit)
+        else:
+            if parsed is None:
+                has_unparsed_ungrouped = True
+            else:
+                val, unit = parsed
+                key = (colour_name(w.colour), unit)
+                colour_totals[key] = colour_totals.get(key, 0.0) + val
+
+    tfoot_rows: list[str] = []
+    has_any_unparsed = False
+
+    if cable_max or cable_has_unparsed:
+        tfoot_rows.append(
+            '<tr><td colspan="7" class="tot-section" data-i18n="totals_cables">'
+            'Cable lengths required</td></tr>'
+        )
+        seen_cables: list[str] = []
+        for w in sorted_wires:
+            if w.cable and w.cable not in seen_cables:
+                seen_cables.append(w.cable)
+        for cname in seen_cables:
+            if cname in cable_has_unparsed:
+                has_any_unparsed = True
+            flag = " *" if cname in cable_has_unparsed else ""
+            if cname in cable_max:
+                val, unit = cable_max[cname]
+                tfoot_rows.append(
+                    f'<tr><td colspan="6" class="tot-label">{_x(cname)}{flag}</td>'
+                    f'<td class="tot-val">{val:.4g}{unit}</td></tr>'
+                )
+            else:
+                tfoot_rows.append(
+                    f'<tr><td colspan="6" class="tot-label">{_x(cname)} *</td>'
+                    f'<td class="tot-val">—</td></tr>'
+                )
+
+    if colour_totals:
+        if tfoot_rows:
+            tfoot_rows.append(
+                '<tr><td colspan="7" class="tot-section" data-i18n="totals_conductors">'
+                'Individual conductors</td></tr>'
+            )
+        if has_unparsed_ungrouped:
+            has_any_unparsed = True
+        note = " *" if has_unparsed_ungrouped else ""
+        for (col_nm, unit), val in sorted(colour_totals.items()):
+            tfoot_rows.append(
+                f'<tr><td colspan="6" class="tot-label">{_x(col_nm)} ({unit or "no unit"}){note}</td>'
+                f'<td class="tot-val">{val:.4g}{unit}</td></tr>'
+            )
 
     tfoot = ""
-    if totals:
-        note = " *" if has_unparsed else ""
-        total_rows = "".join(
-            f'<tr><td colspan="6" class="tot-label">{_x(col_nm)} ({unit or "no unit"}){note}</td>'
-            f'<td class="tot-val">{val:.4g}{unit}</td></tr>'
-            for (col_nm, unit), val in sorted(totals.items())
-        )
+    if tfoot_rows:
         disclaimer = (
             '<tr><td colspan="7" class="tot-note" data-i18n="totals_note">'
             '* Some wires have non-numeric lengths and are excluded from totals.</td></tr>'
-            if has_unparsed else ""
+            if has_any_unparsed else ""
         )
-        tfoot = f"<tfoot>{total_rows}{disclaimer}</tfoot>"
+        tfoot = f"<tfoot>{''.join(tfoot_rows)}{disclaimer}</tfoot>"
 
     return (
         '<div id="cutList"><h2 data-i18n="cut_heading">Cut list</h2>'
@@ -785,6 +835,8 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
   font-weight:700;border-bottom:2px solid #9FA8DA}}
 #cutList td{{padding:4px 8px;border-bottom:1px solid #ECEFF1;color:#263238}}
 #cutList tbody tr:nth-child(even) td{{background:#F5F7FA}}
+#cutList tfoot .tot-section{{text-align:left;font-weight:700;background:#C5CAE9;
+  color:#1A237E;border-top:2px solid #9FA8DA;padding:6px 8px}}
 #cutList tfoot .tot-label{{text-align:right;font-weight:600;background:#E8EAF6;
   border-top:2px solid #9FA8DA}}
 #cutList tfoot .tot-val{{font-weight:600;background:#E8EAF6;border-top:2px solid #9FA8DA}}

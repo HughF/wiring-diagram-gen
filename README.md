@@ -232,11 +232,20 @@ GND,Main PCB,30,GND Rail,,White,280mm
 
 If **any** wire in the CSV has a length value, a **Cut list** table is automatically
 appended below the diagram in the HTML output. The cut list shows every wire with its
-signal name, from/to connectors, pin numbers, colour, and length. It also shows totals
-per colour and unit at the foot of the table.
+signal name, from/to connectors, pin numbers, colour, and length.
 
 When cable groups are present, the cut list is sorted by cable group first, with a
 group header row for each cable. Ungrouped wires appear at the end.
+
+The totals footer is split into two sections:
+
+**Cable lengths required** — one row per cable group showing the length of multicore
+cable to cut (the longest conductor in the group). Conductors inside a cable are
+intentionally excluded from the per-colour totals below, because you purchase the cable
+as a unit rather than buying individual conductors of each colour.
+
+**Individual conductors** — per-colour totals for wires that are not part of any cable
+group (i.e. loose conductors you buy by the metre).
 
 Length values with non-numeric content (e.g. `"TBD"`, `"~300mm"`) are listed in the
 table but excluded from the totals, with a footnote indicating this.
