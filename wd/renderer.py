@@ -336,11 +336,11 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
                 )
             else:
                 out.append(
-                    f'<text x="{cx+10}" y="{row.y+4}" font-size="9"'
+                    f'<text x="{cx+52}" y="{row.y+4}" font-size="9"'
                     f' fill="{theme["header"]}">{row.wire.left_pin}</text>'
                 )
                 out.append(
-                    f'<text x="{cx+32}" y="{row.y+4}" font-size="9.5"'
+                    f'<text x="{cx+68}" y="{row.y+4}" font-size="9.5"'
                     f' fill="#263238">{_x(row.wire.signal)}</text>'
                 )
             out.append('</g>')
