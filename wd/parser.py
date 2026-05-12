@@ -2,33 +2,36 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 
-# Flexible column name aliases (all lowercase, spaces normalised)
-COLUMN_ALIASES: dict[str, list[str]] = {
-    "signal":      ["signal", "signal name", "name", "wire", "wire name"],
-    "left_conn":   ["left connector", "left conn", "from connector", "from",
-                    "source connector", "source"],
-    "left_pin":    ["left pin", "from pin", "source pin", "pin (left)", "left pin no"],
-    "right_conn":  ["right connector", "right conn", "to connector", "to",
+# Flexible column name aliases (all lowercase, spaces normalised).
+# The first entry in each tuple is the canonical form — identical to the
+# field key after replacing underscores with spaces.
+_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "signal":      ("signal", "signal name", "name", "wire", "wire name"),
+    "left_conn":   ("left conn", "left connector", "from connector", "from",
+                    "source connector", "source"),
+    "left_pin":    ("left pin", "from pin", "source pin", "pin (left)", "left pin no"),
+    "right_conn":  ("right conn", "right connector", "to connector", "to",
                     "dest connector", "destination connector", "destination",
-                    "termination", "termination type"],
-    "right_pin":   ["right pin", "to pin", "dest pin", "destination pin",
-                    "pin (right)", "right pin no"],
-    "colour":      ["wire colour", "wire color", "colour", "color", "wire col"],
-    "warning":     ["warning", "note", "notes", "annotation", "remark"],
-    "pair":        ["pair", "twisted pair", "tp", "pair group"],
-    "cable":       ["cable", "cable group", "cable name", "sheath", "multicore", "cable ref"],
-    "length":      ["length", "wire length", "len"],
+                    "termination", "termination type"),
+    "right_pin":   ("right pin", "to pin", "dest pin", "destination pin",
+                    "pin (right)", "right pin no"),
+    "colour":      ("colour", "wire colour", "wire color", "color", "wire col"),
+    "warning":     ("warning", "note", "notes", "annotation", "remark"),
+    "pair":        ("pair", "twisted pair", "tp", "pair group"),
+    "cable":       ("cable", "cable group", "cable name", "sheath", "multicore", "cable ref"),
+    "length":      ("length", "wire length", "len"),
 }
 
 
 def _norm(h: str) -> str:
-    return h.strip().lower().replace("_", " ").replace("-", " ")
+    # Replace separators before stripping so a leading/trailing _ or - is also removed.
+    return h.replace("_", " ").replace("-", " ").strip().lower()
 
 
 def _map_headers(headers: list[str]) -> dict[str, int]:
     norm = {_norm(h): i for i, h in enumerate(headers)}
     result: dict[str, int] = {}
-    for field, aliases in COLUMN_ALIASES.items():
+    for field, aliases in _COLUMN_ALIASES.items():
         for alias in aliases:
             if alias in norm:
                 result[field] = norm[alias]

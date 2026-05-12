@@ -292,10 +292,11 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
         fill = theme["row_a"] if i % 2 == 0 else theme["row_b"]
 
         if is_left:
+            out.append(f'<g data-wid="{row.wire.wid}" style="cursor:pointer">')
             out.append(
-                f'<rect id="rowL_{row.wire.wid}" data-wid="{row.wire.wid}"'
+                f'<rect id="rowL_{row.wire.wid}"'
                 f' x="{cx+2}" y="{ry}" width="{cw-4}" height="{ROW_H}" rx="2"'
-                f' fill="{fill}" opacity="0.6" style="cursor:pointer"/>'
+                f' fill="{fill}" opacity="0.6"/>'
             )
             out.append(
                 f'<text x="{cx+8}" y="{row.y+4}" font-size="10" font-weight="bold"'
@@ -305,11 +306,13 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
                 f'<text x="{cx+28}" y="{row.y+4}" font-size="9.5"'
                 f' fill="#263238">{_x(row.wire.signal)}</text>'
             )
+            out.append('</g>')
         else:
+            out.append(f'<g data-wid="{row.wire.wid}" style="cursor:pointer">')
             out.append(
-                f'<rect id="rowR_{row.wire.wid}" data-wid="{row.wire.wid}"'
+                f'<rect id="rowR_{row.wire.wid}"'
                 f' x="{cx+2}" y="{ry}" width="{cw-4}" height="{ROW_H}" rx="2"'
-                f' fill="{fill}" opacity="0.6" style="cursor:pointer"/>'
+                f' fill="{fill}" opacity="0.6"/>'
             )
             if not cl.spec.is_free_end and row.wire.right_pin is not None:
                 out.append(
@@ -329,6 +332,7 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
                     f'<text x="{cx+32}" y="{row.y+4}" font-size="9.5"'
                     f' fill="#263238">{_x(row.wire.signal)}</text>'
                 )
+            out.append('</g>')
 
     if cl.warnings:
         box_y = cy + CONN_HEADER_H + len(cl.rows) * ROW_H + BOT_PAD - 4 + WARN_BOX_PAD
