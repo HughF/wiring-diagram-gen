@@ -403,6 +403,7 @@ function setLang(lang){{
   if(btn)btn.textContent=t('lang_switch');
   document.documentElement.lang=lang;
   localStorage.setItem('wdLang',lang);
+  if(sel)renderInfoPanel(sel);
 }}
 function toggleLang(){{setLang(curLang==='en'?'zh':'en');}}
 function getElems(wid){{
@@ -459,8 +460,12 @@ function highlight(wid){{
     const r=document.getElementById(p+wid);
     if(r){{r.setAttribute('fill','#FFEB3B');r.style.opacity='1';r.style.filter='none';}}
   }});
-  const panel=document.getElementById('infoPanel');
-  panel.setAttribute('opacity','1');
+  document.getElementById('infoPanel').setAttribute('opacity','1');
+  renderInfoPanel(wid);
+}}
+function renderInfoPanel(wid){{
+  const wd=wireData.find(w=>w.wid===wid);
+  if(!wd)return;
   const rDesc=wd.rightPin!==null
     ?wd.rightConn+' '+t('info_pin')+' '+wd.rightPin
     :wd.rightConn;
