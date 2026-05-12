@@ -237,7 +237,7 @@ def _wrap(text: str, max_chars: int = 46) -> list[str]:
 
 
 # ── Sleeve rendering ──────────────────────────────────────────────────────────
-_SLEEVE_X = WIRE_RIGHT_X - 16   # left edge of sleeve band on the wire
+_SLEEVE_X = WIRE_RIGHT_X - 30   # left edge of sleeve band on the wire
 
 
 def _resolve_sleeve(raw: str) -> tuple[str, str] | None:
@@ -263,16 +263,16 @@ def _sleeve_svg(wid: str, y: int, sleeving: str) -> list[str]:
     kind, val = spec
     if kind == 'color':
         return [
-            f'<rect id="sleeve_{wid}" x="{_SLEEVE_X}" y="{y-5}" width="14" height="10" rx="2"'
+            f'<rect id="sleeve_{wid}" x="{_SLEEVE_X}" y="{y-5}" width="28" height="10" rx="2"'
             f' fill="{val}" stroke="white" stroke-width="1" pointer-events="none"/>',
         ]
     # label sleeve: white background with text
     lx = _SLEEVE_X - 2
     return [
         f'<g id="sleeve_{wid}" pointer-events="none">',
-        f'<rect x="{lx}" y="{y-6}" width="18" height="12" rx="2"'
+        f'<rect x="{lx}" y="{y-6}" width="32" height="12" rx="2"'
         f' fill="#F5F5F5" stroke="#546E7A" stroke-width="1"/>',
-        f'<text x="{lx+9}" y="{y+4}" text-anchor="middle" font-size="7.5"'
+        f'<text x="{lx+16}" y="{y+4}" text-anchor="middle" font-size="7.5"'
         f' font-weight="bold" fill="#263238">{_x(val)}</text>',
         '</g>',
     ]
