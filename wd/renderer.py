@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from .i18n import STRINGS
 from .layout import (
     DiagramLayout, ConnectorLayout, WireLayout,
     CONN_HEADER_H, ROW_H, BOT_PAD, WARN_BOX_PAD, WARN_BOX_H,
@@ -317,35 +318,44 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
 
 
 # ── Embedded JS ───────────────────────────────────────────────────────────────
-def _build_js(layout: DiagramLayout, title: str) -> str:
+def _build_js(layout: DiagramLayout, title: str, default_lang: str = "en") -> str:
     wire_meta = []
     for wl in layout.wire_layouts:
         w = wl.wire
-        right_desc = (
-            f"{w.right_conn} Pin {w.right_pin}"
-            if w.right_pin is not None else w.right_conn
-        )
         wire_meta.append({
-            "wid":       w.wid,
-            "signal":    w.signal,
-            "leftConn":  w.left_conn,
-            "leftPin":   w.left_pin,
-            "rightDesc": right_desc,
-            "colName":   colour_name(w.colour),
-            "isLight":   is_light(resolve(w.colour)),
-            "hasTerm":   w.right_pin is None,
-            "length":    w.length,
+            "wid":      w.wid,
+            "signal":   w.signal,
+            "leftConn": w.left_conn,
+            "leftPin":  w.left_pin,
+            "rightConn": w.right_conn,
+            "rightPin":  w.right_pin,   # None → null in JSON; null = free-end/termination group
+            "colName":  colour_name(w.colour),
+            "isLight":  is_light(resolve(w.colour)),
+            "length":   w.length,
         })
 
     safe_title = _x(title)
+    lang_json  = json.dumps(STRINGS, ensure_ascii=False, separators=(',', ':'))
+    wire_json  = json.dumps(wire_meta, separators=(',', ':'))
     return f"""
-const wireData={json.dumps(wire_meta, separators=(',', ':'))};
+const LANG={lang_json};
+const wireData={wire_json};
 const ALL=wireData.map(w=>w.wid);
 let sel=null;
+let curLang=localStorage.getItem('wdLang')||'{default_lang}';
 const svg=document.getElementById('mainSvg');
 const TERM_PFX=['termSym_','termTail_','termSleeve_'];
 const WIRE_PFX=['wire_','wireBG_','wireOD_','dot33_','dotR_'];
-
+function t(k){{return((LANG[k]||{{}})[curLang]||(LANG[k]||{{}})['en'])||k;}}
+function setLang(lang){{
+  curLang=lang;
+  document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.getAttribute('data-i18n')));
+  const btn=document.getElementById('langBtn');
+  if(btn)btn.textContent=t('lang_switch');
+  document.documentElement.lang=lang;
+  localStorage.setItem('wdLang',lang);
+}}
+function toggleLang(){{setLang(curLang==='en'?'zh':'en');}}
 function getElems(wid){{
   return [...WIRE_PFX,...TERM_PFX].map(p=>document.getElementById(p+wid)).filter(Boolean);
 }}
@@ -398,16 +408,19 @@ function highlight(wid){{
   }});
   const panel=document.getElementById('infoPanel');
   panel.setAttribute('opacity','1');
+  const rDesc=wd.rightPin!==null
+    ?wd.rightConn+' '+t('info_pin')+' '+wd.rightPin
+    :wd.rightConn;
   document.getElementById('infoTitle').textContent=
-    wd.signal+' ('+wd.leftConn+' Pin '+wd.leftPin+' → '+wd.rightDesc+')';
+    wd.signal+' ('+wd.leftConn+' '+t('info_pin')+' '+wd.leftPin+' → '+rDesc+')';
   document.getElementById('infoSub').textContent=
-    'Wire: '+wd.colName+(wd.hasTerm?' | Termination: '+wd.rightDesc:'')+(wd.length?' | Length: '+wd.length:'');
+    t('info_wire')+': '+wd.colName+(wd.rightPin===null?' | '+t('info_term')+': '+rDesc:'')+(wd.length?' | '+t('info_length')+': '+wd.length:'');
 }}
 document.querySelectorAll('[id^="rowL_"],[id^="rowR_"]').forEach(r=>
   r.dataset.origFill=r.getAttribute('fill'));
 svg.addEventListener('click',e=>{{
-  const t=e.target.closest('[data-wid]');
-  if(t)highlight(t.getAttribute('data-wid'));else clearAll();
+  const el=e.target.closest('[data-wid]');
+  if(el)highlight(el.getAttribute('data-wid'));else clearAll();
 }});
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')clearAll();}});
 document.getElementById('dlSvg').addEventListener('click',function(e){{
@@ -422,6 +435,7 @@ document.getElementById('dlHtml').addEventListener('click',function(e){{
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='{safe_title}.html';a.click();
 }});
+setLang(curLang);
 """
 
 
@@ -429,7 +443,7 @@ def _notes_html(notes: list[str]) -> str:
     if not notes:
         return ""
     paras = "".join(f"<p>{_x(n)}</p>" for n in notes)
-    return f'<div id="notes"><h2>Notes</h2>{paras}</div>'
+    return f'<div id="notes"><h2 data-i18n="notes_heading">Notes</h2>{paras}</div>'
 
 
 def _parse_length(raw: str) -> tuple[float, str] | None:
@@ -496,21 +510,28 @@ def _cut_list_html(layout: DiagramLayout) -> str:
             for (col_nm, unit), val in sorted(totals.items())
         )
         disclaimer = (
-            '<tr><td colspan="7" class="tot-note">* Some wires have non-numeric lengths and are excluded from totals.</td></tr>'
+            '<tr><td colspan="7" class="tot-note" data-i18n="totals_note">'
+            '* Some wires have non-numeric lengths and are excluded from totals.</td></tr>'
             if has_unparsed else ""
         )
         tfoot = f"<tfoot>{total_rows}{disclaimer}</tfoot>"
 
     return (
-        '<div id="cutList"><h2>Cut list</h2>'
+        '<div id="cutList"><h2 data-i18n="cut_heading">Cut list</h2>'
         '<table><thead><tr>'
-        "<th>Signal</th><th>From</th><th>Pin</th><th>To</th><th>Pin</th><th>Colour</th><th>Length</th>"
+        '<th data-i18n="col_signal">Signal</th>'
+        '<th data-i18n="col_from">From</th>'
+        '<th data-i18n="col_pin">Pin</th>'
+        '<th data-i18n="col_to">To</th>'
+        '<th data-i18n="col_pin">Pin</th>'
+        '<th data-i18n="col_colour">Colour</th>'
+        '<th data-i18n="col_length">Length</th>'
         f"</tr></thead><tbody>{''.join(rows)}</tbody>{tfoot}</table></div>"
     )
 
 
 # ── Main render entry point ───────────────────────────────────────────────────
-def render_html(layout: DiagramLayout, title: str) -> str:
+def render_html(layout: DiagramLayout, title: str, default_lang: str = "en") -> str:
     W, H    = layout.svg_width, layout.svg_height
     mid_x   = (WIRE_LEFT_X + WIRE_RIGHT_X) // 2
     panel_y = H - 72
@@ -525,7 +546,8 @@ def render_html(layout: DiagramLayout, title: str) -> str:
         f' font-weight="bold" fill="white">{_x(title)}</text>'
     )
     svg.append(
-        f'<text x="{W//2}" y="56" text-anchor="middle" font-size="12" fill="#90CAF9">'
+        f'<text id="svgHint" data-i18n="hint_header" x="{W//2}" y="56"'
+        f' text-anchor="middle" font-size="12" fill="#90CAF9">'
         'Click a wire or row to highlight · Press Esc to clear</text>'
     )
 
@@ -615,14 +637,23 @@ def render_html(layout: DiagramLayout, title: str) -> str:
         f'<rect x="30" y="{panel_y}" width="320" height="60" rx="6"'
         f' fill="white" stroke="#B0BEC5" stroke-width="1.5"/>'
     )
-    svg.append(f'<text x="40" y="{panel_y+16}" font-size="10" font-weight="bold" fill="#263238">Legend</text>')
-    svg.append(f'<text x="40" y="{panel_y+34}" font-size="9" fill="#263238">Wire colours reflect the physical cable colour in the harness.</text>')
-    svg.append(f'<text x="40" y="{panel_y+50}" font-size="9" fill="#263238">Click a wire or row to highlight its end-to-end route.</text>')
+    svg.append(
+        f'<text id="lgdTitle" data-i18n="legend_title" x="40" y="{panel_y+16}"'
+        f' font-size="10" font-weight="bold" fill="#263238">Legend</text>'
+    )
+    svg.append(
+        f'<text id="lgdLine1" data-i18n="legend_line1" x="40" y="{panel_y+34}"'
+        f' font-size="9" fill="#263238">Wire colours reflect the physical cable colour in the harness.</text>'
+    )
+    svg.append(
+        f'<text id="lgdLine2" data-i18n="legend_line2" x="40" y="{panel_y+50}"'
+        f' font-size="9" fill="#263238">Click a wire or row to highlight its end-to-end route.</text>'
+    )
 
     svg.append('</svg>')
 
     return f"""<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="{default_lang}"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>{_x(title)}</title>
@@ -638,6 +669,7 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
   font-weight:700;border:none;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)}}
 .btn-blue{{background:#1565C0}}.btn-blue:hover{{background:#0D47A1}}
 .btn-green{{background:#2E7D32}}.btn-green:hover{{background:#1B5E20}}
+.btn-grey{{background:#546E7A}}.btn-grey:hover{{background:#37474F}}
 #hint{{font-size:12px;color:#dde}}
 #notes,#cutList{{margin-top:16px;background:white;border-radius:8px;padding:16px 22px;
   max-width:{W}px;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.25)}}
@@ -658,11 +690,12 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
 </style></head><body>
 <div id="svgWrap">{chr(10).join(svg)}</div>
 <div id="controls">
-<a class="btn btn-blue" id="dlSvg" href="#">&#11015; Download SVG</a>
-<a class="btn btn-green" id="dlHtml" href="#">&#11015; Download HTML</a>
-<span id="hint">Click any wire, pin row, or termination row to highlight. Click again or Esc to clear.</span>
+<a class="btn btn-blue" id="dlSvg" href="#" data-i18n="btn_svg">⬇ Download SVG</a>
+<a class="btn btn-green" id="dlHtml" href="#" data-i18n="btn_html">⬇ Download HTML</a>
+<button class="btn btn-grey" id="langBtn" onclick="toggleLang()">中文</button>
+<span id="hint" data-i18n="hint_controls">Click any wire, pin row, or termination to highlight. Click again or Esc to clear.</span>
 </div>
 {_notes_html(layout.notes)}
 {_cut_list_html(layout)}
-<script>{_build_js(layout, title)}</script>
+<script>{_build_js(layout, title, default_lang)}</script>
 </body></html>"""

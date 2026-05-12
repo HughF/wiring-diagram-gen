@@ -35,6 +35,8 @@ def main() -> None:
                     help="Diagram title shown in the header (default: CSV filename stem)")
     ap.add_argument("--width", type=int, default=1380,
                     help="SVG canvas width in pixels (default: 1380)")
+    ap.add_argument("--lang", default="en", choices=["en", "zh"],
+                    help="Default display language; viewer can toggle at runtime (default: en)")
     args = ap.parse_args()
 
     csv_path = pathlib.Path(args.csv)
@@ -49,7 +51,7 @@ def main() -> None:
         sys.exit("Error: no wire rows found in CSV — check column headers")
 
     layout = compute_layout(wires, connectors, svg_width=args.width, notes=notes)
-    html   = render_html(layout, title)
+    html   = render_html(layout, title, default_lang=args.lang)
 
     out_path.write_text(html, encoding="utf-8")
     print(f"Written: {out_path}  ({layout.svg_width}×{layout.svg_height}px, {len(wires)} wires, "
