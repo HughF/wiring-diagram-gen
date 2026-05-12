@@ -8,7 +8,7 @@ from .layout import (
     CONN_HEADER_H, ROW_H, BOT_PAD, WARN_BOX_PAD, WARN_BOX_H,
     WIRE_LEFT_X, WIRE_RIGHT_X,
 )
-from .colours import resolve, is_light, colour_name
+from .colours import resolve, resolve_pair, is_light, colour_name
 
 def _pin_key(pin: str) -> list:
     return [int(c) if c.isdigit() else c.lower()
@@ -174,14 +174,25 @@ def _twisted_pair_svg(wl1: WireLayout, wl2: WireLayout) -> list[str]:
             )
 
     # Endpoint dots
-    for wl, col in [(wl1, col1), (wl2, col2)]:
-        w = wl.wire
-        out += [
-            f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
-            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
-            f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="4.5"'
-            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
-        ]
+    for wl in [wl1, wl2]:
+        w    = wl.wire
+        bpair = resolve_pair(w.colour)
+        if bpair:
+            dc1, dc2 = bpair
+            out += [
+                f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="5"'
+                f' fill="{dc2}" stroke="{dc1}" stroke-width="2.5" pointer-events="none"/>',
+                f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="5"'
+                f' fill="{dc2}" stroke="{dc1}" stroke-width="2.5" pointer-events="none"/>',
+            ]
+        else:
+            dcol = resolve(w.colour)
+            out += [
+                f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
+                f' fill="{dcol}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
+                f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="4.5"'
+                f' fill="{dcol}" stroke="white" stroke-width="1.2" pointer-events="none"/>',
+            ]
 
     return out
 
@@ -383,7 +394,7 @@ let sel=null;
 let curLang=localStorage.getItem('wdLang')||'{default_lang}';
 const svg=document.getElementById('mainSvg');
 const TERM_PFX=['termSym_','termTail_','termSleeve_'];
-const WIRE_PFX=['wire_','wireBG_','wireOD_','dot33_','dotR_'];
+const WIRE_PFX=['wire_','wireBG_','wireB2_','wireOD_','dot33_','dotR_'];
 function t(k){{return((LANG[k]||{{}})[curLang]||(LANG[k]||{{}})['en'])||k;}}
 function setLang(lang){{
   curLang=lang;
@@ -402,6 +413,8 @@ function clearAll(){{
     getElems(wid).forEach(e=>{{e.style.opacity='';e.style.filter='';}});
     const wp=document.getElementById('wire_'+wid);
     if(wp)wp.setAttribute('stroke-width','2');
+    const wb2c=document.getElementById('wireB2_'+wid);
+    if(wb2c)wb2c.setAttribute('stroke-width','2');
     const wod0=document.getElementById('wireOD_'+wid);
     if(wod0)wod0.setAttribute('stroke-width','2');
     const wb=document.getElementById('wireBG_'+wid);
@@ -433,6 +446,8 @@ function highlight(wid){{
     const shadowCol=wd.isLight?'#37474F':wp.getAttribute('stroke');
     wp.style.filter='drop-shadow(0 0 6px '+shadowCol+')';
   }}
+  const wb2=document.getElementById('wireB2_'+wid);
+  if(wb2){{wb2.style.opacity='1';wb2.setAttribute('stroke-width','4');}}
   const wod=document.getElementById('wireOD_'+wid);
   if(wod){{wod.style.opacity='1';wod.setAttribute('stroke-width','4');}}
   const wb=document.getElementById('wireBG_'+wid);
@@ -531,7 +546,12 @@ def _cut_list_html(layout: DiagramLayout) -> str:
         col_nm   = colour_name(w.colour)
         right_pin = str(w.right_pin) if w.right_pin is not None else "—"
         length   = _x(w.length) if w.length else "—"
-        swatch   = f'<span class="swatch" style="background:{col}"></span>'
+        spair    = resolve_pair(w.colour)
+        if spair:
+            swatch = (f'<span class="swatch" style="background:linear-gradient('
+                      f'135deg,{spair[0]} 50%,{spair[1]} 50%)"></span>')
+        else:
+            swatch = f'<span class="swatch" style="background:{col}"></span>'
         rows.append(
             f"<tr>"
             f"<td>{_x(w.signal)}</td>"
@@ -639,26 +659,48 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en") -> 
     for wl in layout.wire_layouts:
         if wl.wire.wid in pair2_wids:
             continue
-        w   = wl.wire
-        col = resolve(w.colour)
-        d   = _bez(wl.y_left, wl.y_right)
-        if is_light(col):
+        w    = wl.wire
+        pair = resolve_pair(w.colour)
+        col  = resolve(w.colour)
+        d    = _bez(wl.y_left, wl.y_right)
+        if pair:
+            col1, col2 = pair
             svg.append(
-                f'<path id="wireBG_{w.wid}" d="{d}" stroke="#90A4AE"'
-                f' stroke-width="3.4" fill="none" opacity="0.9" pointer-events="none"/>'
+                f'<path id="wire_{w.wid}" d="{d}" stroke="{col1}"'
+                f' stroke-dasharray="6,6" stroke-width="2" fill="none" opacity="0.85"'
+                f' pointer-events="none"/>'
             )
-        svg.append(
-            f'<path id="wire_{w.wid}" d="{d}" stroke="{col}"'
-            f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>'
-        )
-        svg.append(
-            f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
-            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
-        )
-        svg.append(
-            f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="4.5"'
-            f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
-        )
+            svg.append(
+                f'<path id="wireB2_{w.wid}" d="{d}" stroke="{col2}"'
+                f' stroke-dasharray="6,6" stroke-dashoffset="6" stroke-width="2"'
+                f' fill="none" opacity="0.85" pointer-events="none"/>'
+            )
+            svg.append(
+                f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="5"'
+                f' fill="{col2}" stroke="{col1}" stroke-width="2.5" pointer-events="none"/>'
+            )
+            svg.append(
+                f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="5"'
+                f' fill="{col2}" stroke="{col1}" stroke-width="2.5" pointer-events="none"/>'
+            )
+        else:
+            if is_light(col):
+                svg.append(
+                    f'<path id="wireBG_{w.wid}" d="{d}" stroke="#90A4AE"'
+                    f' stroke-width="3.4" fill="none" opacity="0.9" pointer-events="none"/>'
+                )
+            svg.append(
+                f'<path id="wire_{w.wid}" d="{d}" stroke="{col}"'
+                f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>'
+            )
+            svg.append(
+                f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
+                f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
+            )
+            svg.append(
+                f'<circle id="dotR_{w.wid}" cx="{WIRE_RIGHT_X}" cy="{wl.y_right}" r="4.5"'
+                f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
+            )
     svg.append('</g>')
 
     if pair2_wids:
