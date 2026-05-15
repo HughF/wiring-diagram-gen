@@ -296,6 +296,30 @@ The text is rendered in a styled panel below the diagram in the HTML output. Mul
 `Notes` blocks are supported — each produces a separate paragraph. Blank rows between
 the label and the text are ignored.
 
+### Reference images
+
+Place an `Images` label in the first column of any row, then list image file paths
+(one per row) immediately below it:
+
+```csv
+Images
+photos/connector_front.jpg
+photos/harness_assembled.jpg | Assembled harness — front view
+```
+
+Paths are relative to the CSV file. An optional caption can be added after a `|`
+separator on the same line, or in the second CSV column.
+
+The images are **embedded** into the HTML output as base64 data URIs, so the
+resulting file remains fully self-contained. Each image is displayed as a thumbnail
+in a responsive grid below the cut list. Click any thumbnail to open it full-size
+in a lightbox; click the backdrop or press **Esc** to close.
+
+A missing image file prints a warning to stderr and is skipped — the rest of the
+output is unaffected.
+
+Supported formats: JPEG, PNG, WebP, GIF, or any image type your browser can display.
+
 ---
 
 ## Layout rules

@@ -1,7 +1,11 @@
 from __future__ import annotations
+import base64
 import json
 import math
+import mimetypes
+import os
 import re
+import sys
 from .i18n import STRINGS
 from .layout import (
     DiagramLayout, ConnectorLayout, WireLayout,
@@ -548,6 +552,58 @@ setLang(curLang);
 """
 
 
+def _embed_image(csv_dir: str, path: str) -> str | None:
+    """Read an image file and return a base64 data URI, or None on error."""
+    try:
+        full = os.path.join(csv_dir, path)
+        with open(full, "rb") as f:
+            data = f.read()
+        mime, _ = mimetypes.guess_type(full)
+        mime = mime or "image/jpeg"
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+    except OSError as e:
+        print(f"Warning: could not read image {path!r}: {e}", file=sys.stderr)
+        return None
+
+
+def _photos_html(images: list[tuple[str, str]], csv_dir: str) -> str:
+    if not images:
+        return ""
+    items: list[str] = []
+    for path, caption in images:
+        uri = _embed_image(csv_dir, path)
+        if uri is None:
+            continue
+        cap_attr = _x(caption or os.path.basename(path))
+        cap_html = f'<figcaption class="photo-caption">{_x(caption)}</figcaption>' if caption else ""
+        onclick = (
+            "document.getElementById('lbImg').src=this.src;"
+            "document.getElementById('lbCaption').textContent=this.dataset.caption||'';"
+            "document.getElementById('lightbox').showModal()"
+        )
+        items.append(
+            f'<figure class="photo-item">'
+            f'<img class="photo-thumb" src="{uri}" alt="{cap_attr}" data-caption="{cap_attr}"'
+            f' onclick="{onclick}">'
+            f'{cap_html}</figure>'
+        )
+    if not items:
+        return ""
+    dialog = (
+        '<dialog id="lightbox" onclick="if(event.target===this)this.close()">'
+        '<img id="lbImg" src="" alt="">'
+        '<p id="lbCaption"></p>'
+        '</dialog>'
+    )
+    return (
+        f'{dialog}'
+        '<div id="photos">'
+        '<h2 data-i18n="photos_heading">Reference images</h2>'
+        f'<div class="photo-grid">{"".join(items)}</div>'
+        '</div>'
+    )
+
+
 def _notes_html(notes: list[str]) -> str:
     if not notes:
         return ""
@@ -712,7 +768,8 @@ def _cut_list_html(layout: DiagramLayout) -> str:
 
 
 # ── Main render entry point ───────────────────────────────────────────────────
-def render_html(layout: DiagramLayout, title: str, default_lang: str = "en") -> str:
+def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
+                images: list[tuple[str, str]] | None = None, csv_dir: str = "") -> str:
     W, H    = layout.svg_width, layout.svg_height
     mid_x   = (WIRE_LEFT_X + WIRE_RIGHT_X) // 2
     panel_y = H - 72
@@ -888,10 +945,20 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
 .btn-green{{background:#2E7D32}}.btn-green:hover{{background:#1B5E20}}
 .btn-grey{{background:#546E7A}}.btn-grey:hover{{background:#37474F}}
 #hint{{font-size:12px;color:#dde}}
-#notes,#cutList{{margin-top:16px;background:white;border-radius:8px;padding:16px 22px;
+#notes,#cutList,#photos{{margin-top:16px;background:white;border-radius:8px;padding:16px 22px;
   max-width:{W}px;width:100%;box-shadow:0 2px 10px rgba(0,0,0,.25)}}
-#notes h2,#cutList h2{{font-size:14px;font-weight:700;color:#1A237E;margin-bottom:8px;
+#notes h2,#cutList h2,#photos h2{{font-size:14px;font-weight:700;color:#1A237E;margin-bottom:8px;
   border-bottom:1px solid #C5CAE9;padding-bottom:6px}}
+.photo-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:10px}}
+.photo-item{{display:flex;flex-direction:column;margin:0}}
+.photo-thumb{{width:100%;height:200px;object-fit:cover;border-radius:6px;cursor:pointer;
+  border:1px solid #E0E0E0;transition:opacity .15s}}
+.photo-thumb:hover{{opacity:.82}}
+.photo-caption{{font-size:12px;color:#546E7A;margin-top:5px;text-align:center}}
+#lightbox{{border:none;border-radius:8px;padding:0;max-width:90vw;background:#1A1A1A}}
+#lightbox img{{display:block;max-width:90vw;max-height:80vh;object-fit:contain}}
+#lightbox p{{padding:8px 12px;font-size:13px;color:#CFD8DC;text-align:center;background:#1A1A1A}}
+#lightbox::backdrop{{background:rgba(0,0,0,.75)}}
 #notes p{{font-size:13px;color:#263238;line-height:1.5;margin-top:6px}}
 #cutList table{{width:100%;border-collapse:collapse;font-size:12px}}
 #cutList th{{text-align:left;padding:5px 8px;background:#E8EAF6;color:#1A237E;
@@ -918,5 +985,6 @@ body{{background:#6b8291;display:flex;flex-direction:column;align-items:center;
 </div>
 {_notes_html(layout.notes)}
 {_cut_list_html(layout)}
+{_photos_html(images or [], csv_dir)}
 <script>{_build_js(layout, title, default_lang)}</script>
 </body></html>"""

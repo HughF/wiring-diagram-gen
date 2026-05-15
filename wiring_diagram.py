@@ -46,12 +46,13 @@ def main() -> None:
     out_path = pathlib.Path(args.output) if args.output else csv_path.with_suffix(".html")
     title    = args.title or csv_path.stem
 
-    wires, connectors, notes = parse(str(csv_path))
+    wires, connectors, notes, images = parse(str(csv_path))
     if not wires:
         sys.exit("Error: no wire rows found in CSV — check column headers")
 
     layout = compute_layout(wires, connectors, svg_width=args.width, notes=notes)
-    html   = render_html(layout, title, default_lang=args.lang)
+    html   = render_html(layout, title, default_lang=args.lang,
+                         images=images, csv_dir=str(csv_path.parent))
 
     out_path.write_text(html, encoding="utf-8")
     print(f"Written: {out_path}  ({layout.svg_width}×{layout.svg_height}px, {len(wires)} wires, "

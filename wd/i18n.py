@@ -31,4 +31,5 @@ STRINGS: dict[str, dict[str, str]] = {
     "cable_group":       {"en": "Cable",                    "zh": "电缆"},
     "totals_cables":     {"en": "Cable lengths required",    "zh": "所需电缆长度"},
     "totals_conductors": {"en": "Individual conductors",     "zh": "单独导体"},
+    "photos_heading":    {"en": "Reference images",          "zh": "参考图片"},
 }

@@ -64,12 +64,14 @@ class ConnectorSpec:
     order: int          # first-appearance order in the CSV
 
 
-def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
+def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str], list[tuple[str, str]]]:
     wires: list[Wire] = []
     conn_seen: dict[tuple[str, str], ConnectorSpec] = {}  # keyed by (name, side)
     conn_order = 0
     notes: list[str] = []
+    images: list[tuple[str, str]] = []   # (path, caption) pairs
     next_is_notes = False
+    next_is_images = False
 
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f)
@@ -94,8 +96,28 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
                 next_is_notes = False
                 continue
 
+            if next_is_images:
+                cell = row[0].strip()
+                if cell.lower() == "notes":
+                    next_is_images = False
+                    next_is_notes = True
+                    continue
+                if "|" in cell:
+                    path_s, _, cap = cell.partition("|")
+                    path_s, cap = path_s.strip(), cap.strip()
+                else:
+                    path_s = cell
+                    cap = row[1].strip() if len(row) > 1 else ""
+                if path_s:
+                    images.append((path_s, cap))
+                continue
+
             if row[0].strip().lower() == "notes":
                 next_is_notes = True
+                continue
+
+            if row[0].strip().lower() == "images":
+                next_is_images = True
                 continue
 
             def get(field: str) -> str:
@@ -152,4 +174,4 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str]]:
                     conn_order += 1
 
     connectors = sorted(conn_seen.values(), key=lambda c: c.order)
-    return wires, connectors, notes
+    return wires, connectors, notes, images
