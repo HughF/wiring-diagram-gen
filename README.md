@@ -247,6 +247,21 @@ GND,Main PCB,16,Terminal Block,2,Black,,,Power Flex
 
 Cable bands are drawn behind the wires and do not affect interactivity.
 
+### Jumpers (pin-to-pin bridges)
+
+Set `Left Connector` and `Right Connector` to the **same name** to create a jumper — a short bridge between two pins on the same connector. The `Right Pin` value is the second bridged pin.
+
+```csv
+Signal,Left Connector,Left Pin,Right Connector,Right Pin,Wire Colour,Length
+Step+,Main PCB,1,Drive D-Sub,42,Purple,300mm
+Bridge 3-4,Main PCB,3,Main PCB,4,Black,50mm
+GND,Main PCB,5,Drive D-Sub,43,Black,300mm
+```
+
+Both bridged pins appear as rows in the connector panel, sorted alongside the other pins. A small arc is drawn to the right of the panel connecting them. Click either row or the arc to highlight the jumper; the info bar shows `Connector: Pin A ↔ Pin B`.
+
+Jumpers support wire colours (including bicolour) and appear in the cut list. Sleeving and termination symbols do not apply.
+
 ### Wire lengths and cut list
 
 Add a `Length` column to record the cut length of each wire. Lengths can include

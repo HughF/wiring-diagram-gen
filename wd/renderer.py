@@ -71,6 +71,13 @@ def _bez(yl: int, yr: int) -> str:
     return f"M{WIRE_LEFT_X},{yl} C{_CP1_X},{yl} {_CP2_X},{yr} {WIRE_RIGHT_X},{yr}"
 
 
+_JUMPER_R = 40   # how far (px) the jumper arc bulges rightward from the left connector edge
+
+def _jumper_arc(y_a: int, y_b: int) -> str:
+    r = WIRE_LEFT_X + _JUMPER_R
+    return f"M{WIRE_LEFT_X},{y_a} C{r},{y_a} {r},{y_b} {WIRE_LEFT_X},{y_b}"
+
+
 def _bezier_pt(t: float, y_left: float, y_right: float) -> tuple[float, float]:
     """Evaluate the wire cubic Bézier at parameter t, returning (x, y)."""
     x = ((1-t)**3*WIRE_LEFT_X + 3*(1-t)**2*t*_CP1_X
@@ -203,7 +210,7 @@ def _twisted_pair_svg(wl1: WireLayout, wl2: WireLayout) -> list[str]:
 
 def _cable_band_svg(name: str, cable_idx: int, wids: list[str],
                     wid_to_wl: dict[str, "WireLayout"]) -> list[str]:
-    wls = [wid_to_wl[wid] for wid in wids if wid in wid_to_wl]
+    wls = [wid_to_wl[wid] for wid in wids if wid in wid_to_wl and not wid_to_wl[wid].is_jumper]
     if not wls:
         return []
     stroke_col, fill_col = _CABLE_PALETTE[cable_idx % len(_CABLE_PALETTE)]
@@ -357,15 +364,18 @@ def _connector_svg(cl: ConnectorLayout, is_left: bool) -> list[str]:
         fill = theme["row_a"] if i % 2 == 0 else theme["row_b"]
 
         if is_left:
+            is_right_ep = row.display_pin is not None
+            row_id  = f"rowL2_{row.wire.wid}" if is_right_ep else f"rowL_{row.wire.wid}"
+            pin_lbl = row.display_pin if is_right_ep else row.wire.left_pin
             out.append(f'<g data-wid="{row.wire.wid}" style="cursor:pointer">')
             out.append(
-                f'<rect id="rowL_{row.wire.wid}"'
+                f'<rect id="{row_id}"'
                 f' x="{cx+2}" y="{ry}" width="{cw-4}" height="{ROW_H}" rx="2"'
                 f' fill="{fill}" opacity="0.6"/>'
             )
             out.append(
                 f'<text x="{cx+8}" y="{row.y+4}" font-size="10" font-weight="bold"'
-                f' fill="#1A237E">{row.wire.left_pin}</text>'
+                f' fill="#1A237E">{pin_lbl}</text>'
             )
             out.append(
                 f'<text x="{cx+28}" y="{row.y+4}" font-size="9.5"'
@@ -436,6 +446,7 @@ def _build_js(layout: DiagramLayout, title: str, default_lang: str = "en") -> st
             "isLight":  is_light(resolve(w.colour)),
             "length":   w.length,
             "sleeving": w.sleeving,
+            "isJumper": w.is_jumper,
         })
 
     safe_title = _x(title)
@@ -475,7 +486,7 @@ function clearAll(){{
     if(wod0)wod0.setAttribute('stroke-width','2');
     const wb=document.getElementById('wireBG_'+wid);
     if(wb){{wb.setAttribute('stroke','#90A4AE');wb.setAttribute('stroke-width','3.4');}}
-    ['rowL_','rowR_'].forEach(p=>{{
+    ['rowL_','rowR_','rowL2_'].forEach(p=>{{
       const r=document.getElementById(p+wid);
       if(r){{r.style.opacity='';r.style.filter='';r.setAttribute('fill',r.dataset.origFill);}}
     }});
@@ -511,7 +522,7 @@ function highlight(wid){{
   [...WIRE_PFX.slice(2),...TERM_PFX].forEach(p=>{{
     const e=document.getElementById(p+wid);if(e)e.style.opacity='1';
   }});
-  ['rowL_','rowR_'].forEach(p=>{{
+  ['rowL_','rowR_','rowL2_'].forEach(p=>{{
     const r=document.getElementById(p+wid);
     if(r){{r.setAttribute('fill','#FFEB3B');r.style.opacity='1';r.style.filter='none';}}
   }});
@@ -521,15 +532,22 @@ function highlight(wid){{
 function renderInfoPanel(wid){{
   const wd=wireData.find(w=>w.wid===wid);
   if(!wd)return;
-  const rDesc=wd.rightPin!==null
-    ?wd.rightConn+' '+t('info_pin')+' '+wd.rightPin
-    :wd.rightConn;
-  document.getElementById('infoTitle').textContent=
-    wd.signal+' ('+wd.leftConn+' '+t('info_pin')+' '+wd.leftPin+' → '+rDesc+')';
-  document.getElementById('infoSub').textContent=
-    t('info_wire')+': '+wd.colName+(wd.rightPin===null?' | '+t('info_term')+': '+rDesc:'')+(wd.sleeving?' | '+t('info_sleeving')+': '+wd.sleeving:'')+(wd.length?' | '+t('info_length')+': '+wd.length:'');
+  if(wd.isJumper){{
+    document.getElementById('infoTitle').textContent=
+      wd.signal+' ('+wd.leftConn+': '+t('info_pin')+' '+wd.leftPin+' ↔ '+t('info_pin')+' '+wd.rightPin+')';
+    document.getElementById('infoSub').textContent=
+      t('info_wire')+': '+wd.colName+(wd.length?' | '+t('info_length')+': '+wd.length:'');
+  }}else{{
+    const rDesc=wd.rightPin!==null
+      ?wd.rightConn+' '+t('info_pin')+' '+wd.rightPin
+      :wd.rightConn;
+    document.getElementById('infoTitle').textContent=
+      wd.signal+' ('+wd.leftConn+' '+t('info_pin')+' '+wd.leftPin+' → '+rDesc+')';
+    document.getElementById('infoSub').textContent=
+      t('info_wire')+': '+wd.colName+(wd.rightPin===null?' | '+t('info_term')+': '+rDesc:'')+(wd.sleeving?' | '+t('info_sleeving')+': '+wd.sleeving:'')+(wd.length?' | '+t('info_length')+': '+wd.length:'');
+  }}
 }}
-document.querySelectorAll('[id^="rowL_"],[id^="rowR_"]').forEach(r=>
+document.querySelectorAll('[id^="rowL_"],[id^="rowR_"],[id^="rowL2_"]').forEach(r=>
   r.dataset.origFill=r.getAttribute('fill'));
 svg.addEventListener('click',e=>{{
   const el=e.target.closest('[data-wid]');
@@ -796,8 +814,9 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
 
     svg.append('<g id="hitAreas">')
     for wl in layout.wire_layouts:
+        d = _jumper_arc(wl.y_left, wl.y_right) if wl.is_jumper else _bez(wl.y_left, wl.y_right)
         svg.append(
-            f'<path d="{_bez(wl.y_left, wl.y_right)}" stroke="transparent"'
+            f'<path d="{d}" stroke="transparent"'
             f' stroke-width="14" fill="none" data-wid="{wl.wire.wid}" style="cursor:pointer"/>'
         )
     svg.append('</g>')
@@ -820,7 +839,7 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
 
     svg.append('<g id="wires">')
     for wl in layout.wire_layouts:
-        if wl.wire.wid in pair2_wids:
+        if wl.wire.wid in pair2_wids or wl.is_jumper:
             continue
         w    = wl.wire
         pair = resolve_pair(w.colour)
@@ -866,6 +885,54 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
             )
     svg.append('</g>')
 
+    jumper_wls = [wl for wl in layout.wire_layouts if wl.is_jumper]
+    if jumper_wls:
+        svg.append('<g id="jumpers">')
+        for wl in jumper_wls:
+            w   = wl.wire
+            col = resolve(w.colour)
+            pair = resolve_pair(w.colour)
+            d   = _jumper_arc(wl.y_left, wl.y_right)
+            if is_light(col):
+                svg.append(
+                    f'<path id="wireBG_{w.wid}" d="{d}" stroke="#90A4AE"'
+                    f' stroke-width="3.4" fill="none" opacity="0.9" pointer-events="none"/>'
+                )
+            if pair:
+                col1, col2 = pair
+                svg.append(
+                    f'<path id="wire_{w.wid}" d="{d}" stroke="{col1}"'
+                    f' stroke-dasharray="6,6" stroke-width="2" fill="none" opacity="0.85"'
+                    f' pointer-events="none"/>'
+                )
+                svg.append(
+                    f'<path id="wireB2_{w.wid}" d="{d}" stroke="{col2}"'
+                    f' stroke-dasharray="6,6" stroke-dashoffset="6" stroke-width="2"'
+                    f' fill="none" opacity="0.85" pointer-events="none"/>'
+                )
+                svg.append(
+                    f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="5"'
+                    f' fill="{col2}" stroke="{col1}" stroke-width="2.5" pointer-events="none"/>'
+                )
+                svg.append(
+                    f'<circle id="dotR_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_right}" r="5"'
+                    f' fill="{col2}" stroke="{col1}" stroke-width="2.5" pointer-events="none"/>'
+                )
+            else:
+                svg.append(
+                    f'<path id="wire_{w.wid}" d="{d}" stroke="{col}"'
+                    f' stroke-width="2" fill="none" opacity="0.85" pointer-events="none"/>'
+                )
+                svg.append(
+                    f'<circle id="dot33_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_left}" r="4.5"'
+                    f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
+                )
+                svg.append(
+                    f'<circle id="dotR_{w.wid}" cx="{WIRE_LEFT_X}" cy="{wl.y_right}" r="4.5"'
+                    f' fill="{col}" stroke="white" stroke-width="1.2" pointer-events="none"/>'
+                )
+        svg.append('</g>')
+
     if pair2_wids:
         svg.append('<g id="twistWires">')
         for wids in layout.pair_groups.values():
@@ -880,6 +947,8 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
 
     svg.append('<g id="sleeves">')
     for wl in layout.wire_layouts:
+        if wl.is_jumper:
+            continue
         slv = _effective_sleeve(wl.wire)
         if slv:
             svg.extend(_sleeve_svg(wl.wire.wid, wl.y_right, slv))
@@ -888,6 +957,8 @@ def render_html(layout: DiagramLayout, title: str, default_lang: str = "en",
     svg.append('<g id="terms">')
     for wl in layout.wire_layouts:
         w = wl.wire
+        if wl.is_jumper:
+            continue
         if w.right_pin is None and w.right_conn:
             svg.extend(_term_sym(w.wid, w.right_conn, wl.y_right, resolve(w.colour), w.signal))
     svg.append('</g>')

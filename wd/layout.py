@@ -34,7 +34,8 @@ WIRE_RIGHT_X  = 950  # x where wires arrive at the right panel (left edge)
 @dataclass
 class RowLayout:
     wire: Wire
-    y: int          # vertical centre of the row rect
+    y: int                      # vertical centre of the row rect
+    display_pin: str | None = None  # if set, shown instead of wire.left_pin (jumper right endpoint)
 
 
 @dataclass
@@ -54,7 +55,8 @@ class ConnectorLayout:
 class WireLayout:
     wire: Wire
     y_left: int     # vertical centre at left panel edge
-    y_right: int    # vertical centre at right panel edge
+    y_right: int    # vertical centre at right panel edge (or jumper right-endpoint y, left side)
+    is_jumper: bool = False
 
 
 @dataclass
@@ -93,7 +95,7 @@ def compute_layout(
     right_wires: dict[str, list[Wire]] = defaultdict(list)
     for w in wires:
         left_wires[w.left_conn].append(w)
-        if w.right_conn:
+        if w.right_conn and not w.is_jumper:
             right_wires[w.right_conn].append(w)
 
     # Left: sort rows ascending by left_pin within each connector
@@ -115,14 +117,23 @@ def compute_layout(
         right_wires[c.name].sort(key=lambda w: _pin_key(w.left_pin))
 
     # ── Left connector layouts ────────────────────────────────────────────────
+    # Jumper wires contribute two rows to the left panel: one for left_pin and
+    # one for right_pin (the bridged endpoint). Both rows are sorted together
+    # by pin number and share the same wire wid for click-to-highlight.
     left_layouts: list[ConnectorLayout] = []
     y = TOP_Y
     for spec in left_specs:
         ws = left_wires.get(spec.name, [])
-        h = _conn_height(len(ws), 0)  # warnings are displayed on right-side panels only
+        row_entries: list[tuple[list, Wire, str | None]] = []
+        for w in ws:
+            row_entries.append((_pin_key(w.left_pin), w, None))
+            if w.is_jumper and w.right_pin is not None:
+                row_entries.append((_pin_key(w.right_pin), w, w.right_pin))
+        row_entries.sort(key=lambda t: t[0])
+        h = _conn_height(len(row_entries), 0)
         rows = [
-            RowLayout(wire=w, y=y + CONN_HEADER_H + i * ROW_H + ROW_H // 2)
-            for i, w in enumerate(ws)
+            RowLayout(wire=w, y=y + CONN_HEADER_H + i * ROW_H + ROW_H // 2, display_pin=dp)
+            for i, (_, w, dp) in enumerate(row_entries)
         ]
         left_layouts.append(ConnectorLayout(
             spec=spec, x=LEFT_X, y=y, w=LEFT_W, h=h,
@@ -153,11 +164,24 @@ def compute_layout(
     right_bottom = (right_layouts[-1].y + right_layouts[-1].h) if right_layouts else TOP_Y
 
     # ── Wire y-coordinate lookup ──────────────────────────────────────────────
-    left_y:  dict[str, int] = {row.wire.wid: row.y for cl in left_layouts  for row in cl.rows}
+    left_y:       dict[str, int] = {}  # wid → y of left_pin row
+    jumper_right_y: dict[str, int] = {}  # wid → y of right_pin row (jumpers only)
+    for cl in left_layouts:
+        for row in cl.rows:
+            if row.display_pin is None:
+                left_y[row.wire.wid] = row.y
+            else:
+                jumper_right_y[row.wire.wid] = row.y
+
     right_y: dict[str, int] = {row.wire.wid: row.y for cr in right_layouts for row in cr.rows}
 
     wire_layouts = [
-        WireLayout(wire=w, y_left=left_y.get(w.wid, 0), y_right=right_y.get(w.wid, 0))
+        WireLayout(
+            wire=w,
+            y_left=left_y.get(w.wid, 0),
+            y_right=(jumper_right_y.get(w.wid, 0) if w.is_jumper else right_y.get(w.wid, 0)),
+            is_jumper=w.is_jumper,
+        )
         for w in wires
     ]
 

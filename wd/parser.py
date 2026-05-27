@@ -54,6 +54,7 @@ class Wire:
     cable: str              # cable/sheath group name; empty string = individual wire
     length: str             # raw length string as written in CSV; empty = unspecified
     sleeving: str           # sleeve colour/label for wire end; empty = none
+    is_jumper: bool = False # True when left_conn == right_conn (pin-to-pin bridge)
 
 
 @dataclass
@@ -147,6 +148,11 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str], list[t
             if right_pin_s and right_pin_s.upper() not in ("N/C", "NC", ""):
                 right_pin = right_pin_s
 
+            is_jumper = bool(
+                left_conn and right_conn and left_conn == right_conn
+                and right_pin is not None
+            )
+
             wid = f"w{len(wires) + 1}"
             wires.append(Wire(
                 wid=wid,
@@ -161,12 +167,15 @@ def parse(path: str) -> tuple[list[Wire], list[ConnectorSpec], list[str], list[t
                 cable=cable,
                 length=length,
                 sleeving=sleeving,
+                is_jumper=is_jumper,
             ))
 
             for name, side, free in [
                 (left_conn, "left", False),
                 (right_conn, "right", right_pin is None),
             ]:
+                if is_jumper and side == "right":
+                    continue  # jumper right endpoint lives on the left panel
                 if name and (name, side) not in conn_seen:
                     conn_seen[(name, side)] = ConnectorSpec(
                         name=name, side=side, is_free_end=free, order=conn_order,
